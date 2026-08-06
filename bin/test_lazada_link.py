@@ -43,13 +43,12 @@ def test_fetch_real_lazada_affiliate():
     print("🔍 [TEST DIAGNOSTIC] Lazada Marketing Feed & GetLink API")
     print("==================================================\n")
 
-    # Clean variables
     app_key = sanitize_value(LAZADA_LITEAPP_KEY)
     app_secret = sanitize_value(LAZADA_LITEAPP_SECRET)
     user_token = sanitize_value(LAZADA_USER_TOKEN)
     member_id = sanitize_value(LAZADA_MEMBER_ID)
 
-    # 1. Semakan Kunci Wajib (NO DUMMY ALLOWED)
+    # Semakan Kunci Wajib (NO DUMMY ALLOWED)
     missing = []
     if not app_key: missing.append("LAZADA_LiteApp_Key / LAZADA_APP_KEY")
     if not app_secret: missing.append("LAZADA_LiteApp_Secret / LAZADA_APP_SECRET")
@@ -69,9 +68,7 @@ def test_fetch_real_lazada_affiliate():
     domain = "api.lazada.com.my"
     base_url = f"https://{domain}/rest"
 
-    # ==================================================
     # LANGKAH 1: Get Product Feed (/marketing/product/feed)
-    # ==================================================
     feed_path = "/marketing/product/feed"
     feed_url = f"{base_url}{feed_path}"
     
@@ -164,9 +161,7 @@ def test_fetch_real_lazada_affiliate():
     print(f"   📌 Product Name : {product_name}")
     print(f"   🖼️ Real Image   : {real_image}")
 
-    # ==================================================
     # LANGKAH 2A: Get Tracking Link (/marketing/product/link)
-    # ==================================================
     tracking_link = ""
     
     link_path = "/marketing/product/link"
@@ -190,7 +185,6 @@ def test_fetch_real_lazada_affiliate():
 
         link_code = link_json.get("code")
         if res_link.status_code == 200 and (link_code is None or str(link_code) == "0"):
-            # Pembacaan struktur JSON tepat: result -> data -> trackingLink
             res_obj = link_json.get("result", {})
             if isinstance(res_obj, dict):
                 data_obj = res_obj.get("data", {})
@@ -201,9 +195,7 @@ def test_fetch_real_lazada_affiliate():
     except Exception as err2a:
         print(f"⚠️ Method 2A gagal: {err2a}")
 
-    # ==================================================
     # LANGKAH 2B: Fallback ke Batch Get Link (/marketing/getlink)
-    # ==================================================
     if not tracking_link:
         print("\n2️⃣B [STEP 2B] Mencuba Batch Get Link API (/marketing/getlink)...")
         getlink_path = "/marketing/getlink"
@@ -227,7 +219,6 @@ def test_fetch_real_lazada_affiliate():
 
             gl_code = gl_json.get("code")
             if res_gl.status_code == 200 and (gl_code is None or str(gl_code) == "0"):
-                # Pembacaan struktur JSON tepat: result -> data -> productBatchGetLinkInfoList
                 res_obj = gl_json.get("result", {})
                 if isinstance(res_obj, dict):
                     data_obj = res_obj.get("data", {})
