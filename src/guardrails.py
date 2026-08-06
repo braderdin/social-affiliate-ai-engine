@@ -1,3 +1,5 @@
+import re
+
 # Kategori Sasaran Rasmi Kekeluargaan & Surirumah
 TARGET_CATEGORIES = [
     "10100539",  # Keperluan Rumah & Pembersihan Dapur
@@ -9,12 +11,13 @@ TARGET_CATEGORIES = [
 
 # Senarai Hitam Strict (Non-Halal, Alkohol & Jenama Arak, Promo Fake/GWP, Barangan Mewah/Bukan Persona)
 BLACKLIST_KEYWORDS = [
-    # Non-Halal / Alkohol / Babi / Jenama Arak Utama
+    # Non-Halal / Alkohol / Babi / Jenama Arak Utama & Tambahan
     "whisky", "whiskey", "liquor", "wine", "vodka", "alcohol", "beer", "rum",
     "pork", "lard", "bacon", "ham", "non-halal", "non halal", "tokek", "arak",
     "martell", "cognac", "brandy", "xo", "hennessy", "chivas", "johnnie", "walker",
     "smirnoff", "heineken", "tiger", "carlsberg", "guinness", "somersby", "asahi",
     "budweiser", "jack daniels", "bacardi", "absolut", "gin", "tequila",
+    "tomatin", "scotch", "cask", "singlemalt", "single malt", "bourbon", "distillery", "malt", "barrel",
     # Promo Palsu / GWP / Gift
     "gwp", "not for sale", "gift not for sale", "free gift", "sample",
     "blind box", "tester", "prize", "lazland only", "cgwp", "voucher", "e-voucher",
@@ -35,11 +38,13 @@ def normalize_image_url(url):
         return f"https://{url}"
     return url
 
-def is_title_blacklisted(title):
-    """Menyemak sama ada tajuk produk mengandungi sebarang kata kunci disekat."""
-    lower_title = str(title or "").lower()
+def is_title_blacklisted(title, desc=""):
+    """Menyemak sama ada tajuk atau deskripsi produk mengandungi sebarang kata kunci disekat."""
+    full_text = f"{str(title or '')} {str(desc or '')}".lower()
     for kw in BLACKLIST_KEYWORDS:
-        if kw in lower_title:
+        # Padanan regex perkataan penuh untuk perkataan tunggal, atau carian padanan frasa
+        pattern = r'\b' + re.escape(kw) + r'\b' if (' ' not in kw and kw.isalnum()) else re.escape(kw)
+        if re.search(pattern, full_text):
             return True, kw
     return False, ""
 
@@ -47,14 +52,14 @@ def evaluate_product(prod):
     """
     Menilai kelayakan produk mengikut:
     1. Status outOfStock
-    2. Semakan Kata Kunci Disekat (Non-Halal, GWP, dll.)
+    2. Semakan Kata Kunci Disekat (Non-Halal, GWP, dll. pada Tajuk & Deskripsi)
     3. Julat Harga Idaman RM 10.00 - RM 500.00
     """
     if prod.get("outOfStock") is True or str(prod.get("outOfStock")).lower() == "true":
         return False, 0.0, "Habis Stok (outOfStock)"
 
-    # 1. Semak kata kunci disekat
-    is_blacklisted, kw = is_title_blacklisted(prod.get("title"))
+    # 1. Semak kata kunci disekat (Tajuk + Deskripsi)
+    is_blacklisted, kw = is_title_blacklisted(prod.get("title"), prod.get("desc"))
     if is_blacklisted:
         return False, 0.0, f"Ditolak Kata Kunci Disekat ('{kw}')"
 
