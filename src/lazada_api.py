@@ -2,6 +2,7 @@ import time
 import hmac
 import hashlib
 import random
+import re
 import requests
 
 EXCLUDE_KEYWORDS = [
@@ -23,18 +24,24 @@ def sign_lazada(api_path, params, app_secret):
     ).hexdigest().upper()
 
 def parse_price(prod):
-    """Membaca pelbagai variasi kunci harga JSON dari Lazada Feed API"""
+    """Membaca dan membersihkan pelbagai format harga dari Lazada Feed API secara tepat"""
     price_keys = [
         "discountPrice", "price", "salePrice", "priceAmount", 
         "originalPrice", "itemPrice", "special_price"
     ]
     for key in price_keys:
         val = prod.get(key)
+        if val is None and isinstance(prod.get("price"), dict):
+            val = prod.get("price", {}).get("amount") or prod.get("price", {}).get("value")
+
         if val is not None:
             try:
-                parsed = float(val)
-                if parsed >= 0:
-                    return parsed
+                # Bersihkan teks harga (Contoh: "RM 45.00" -> "45.00")
+                clean_str = re.sub(r'[^0-9.]', '', str(val))
+                if clean_str:
+                    parsed = float(clean_str)
+                    if parsed >= 0:
+                        return parsed
             except (ValueError, TypeError):
                 continue
     return 0.0
@@ -56,17 +63,17 @@ def is_valid_product(prod):
 
 def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=None):
     """
-    Melakukan Smart Page Traversal (Page 1 hingga 10) secara automatik
-    sehingga mendapat senarai produk sah yang melepasi penapis kualiti.
+    Melakukan Smart Page Traversal (Page 1 hingga 10) dan mengumpul
+    sekurang-kurangnya 15-20 produk UNIK melepasi penapis kualiti.
     """
     domain = "api.lazada.com.my"
     base_url = f"https://{domain}/rest"
     feed_path = "/marketing/product/feed"
     feed_url = f"{base_url}{feed_path}"
 
-    all_valid_products = []
+    unique_candidates = []
+    seen_ids = set()
 
-    # Peluasan Paginasi Automatik: Meneliti Muka Surat 1 hingga 10
     pages = list(range(1, 11))
     random.shuffle(pages)
 
@@ -101,24 +108,27 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
                     elif isinstance(result_data, list):
                         prods = result_data
 
-                    if prods:
-                        valid_prods = [p for p in prods if is_valid_product(p)]
-                        if valid_prods:
-                            all_valid_products.extend(valid_prods)
+                    for p in prods:
+                        if is_valid_product(p):
+                            p_id = str(p.get("productId") or p.get("product_id") or p.get("id") or "")
+                            if p_id and p_id not in seen_ids:
+                                seen_ids.add(p_id)
+                                unique_candidates.append(p)
             except Exception:
                 continue
 
-        if len(all_valid_products) >= 5:
+        # Berhenti jika kolam calon unik sudah mencukupi (>= 15 produk)
+        if len(unique_candidates) >= 15:
             break
 
-    if not all_valid_products:
+    if not unique_candidates:
         return False, {
             "error": "Product Feed API memulangkan 0 produk sah di dalam julat RM 0-500 merentasi Page 1-10.",
             "status": "FEED_FILTERED_EMPTY"
         }
 
-    random.shuffle(all_valid_products)
-    return True, all_valid_products
+    random.shuffle(unique_candidates)
+    return True, unique_candidates
 
 def generate_tracking_link(app_key, app_secret, user_token, product_id):
     """Jana pautan affiliate rasmi dari Lazada API"""
@@ -180,7 +190,7 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
     return ""
 
 def get_lazada_product(app_key, app_secret, user_token, member_id=None):
-    """Fungsi utama mengekalkan antaramuka sedia ada untuk menyokong pipeline"""
+    """Fungsi sokongan langsung untuk pipeline"""
     ok, candidates = get_lazada_product_candidates(app_key, app_secret, user_token, member_id)
     if not ok:
         return False, candidates

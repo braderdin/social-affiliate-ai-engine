@@ -27,7 +27,7 @@ def main():
     print("🚀 [FULL PIPELINE] Automasi Produk Real & Telegram")
     print("==================================================")
     
-    # Pembacaan Pemboleh Ubah Persekitaran (.env.local / GitHub Secrets)
+    # Pembacaan Pemboleh Ubah Persekitaran
     TELEGRAM_BOT_TOKEN = sanitize_value(os.getenv("TELEGRAM_BOT_TOKEN"))
     TELEGRAM_CHAT_ID = sanitize_value(os.getenv("TELEGRAM_CHAT_ID"))
     
@@ -58,8 +58,8 @@ def main():
         print(f"🔴 [RALAT KRITIKAL]: Kunci persekitaran tidak lengkap: {missing_keys}")
         sys.exit(1)
 
-    # 1. Menarik Calon Produk dari Lazada API (Smart Page Traversal)
-    print("\n1️⃣ Mengambil calon produk dari Lazada Feed (Pages 1-10)...")
+    # 1. Menarik Calon Produk Unik dari Lazada API
+    print("\n1️⃣ Mengambil calon produk unik dari Lazada Feed (Pages 1-10)...")
     ok, candidates = get_lazada_product_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, LAZADA_MEMBER_ID)
     
     if not ok:
@@ -69,9 +69,9 @@ def main():
         print(f"Laporan Ralat: {json.dumps(candidates, indent=2)}")
         sys.exit(1)
 
-    # 2. In-Feed Filtering (Semakan Upstash Redis & Vector DB)
+    # 2. In-Feed Filtering Menerusi Gelung Calon Unik
     selected_product = None
-    print(f"🔍 Menapis {len(candidates)} calon produk menerusi Redis & Vector DB...")
+    print(f"🔍 Menapis {len(candidates)} calon produk unik menerusi Redis & Vector DB...")
 
     for prod in candidates:
         p_id = str(prod.get("productId") or prod.get("product_id") or prod.get("id"))
@@ -99,7 +99,7 @@ def main():
                 print(f"⏭️ [VECTOR DB] Tajuk '{p_name}' serupa dengan produk disiar < 48 jam lepas. Mencuba item seterusnya...")
                 continue
 
-        # Jana Pautan Affiliate
+        # Jana Pautan Affiliate Real
         tracking_link = generate_tracking_link(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, p_id)
         if not tracking_link:
             continue
@@ -111,12 +111,12 @@ def main():
             "image": img_url,
             "link": tracking_link
         }
-        print(f"🟢 [PRODUK LULUS TIGA LAPISAN]: '{p_name}' (ID: {p_id})")
+        print(f"🟢 [PRODUK BAHARU LULUS]: '{p_name}' (ID: {p_id})")
         break
 
     if not selected_product:
         print("\n==================================================")
-        print("🔴 [RALAT PIPELINE]: Tiada produk baharu yang lulus semakan Redis/Vector.")
+        print("🔴 [RALAT PIPELINE]: Kesemua calon produk dari Lazada API telah pernah dihantar (Redis/Vector).")
         print("==================================================")
         print("❌ Versi dummy / fallback dilarang keras. Skrip dihentikan.")
         sys.exit(1)
