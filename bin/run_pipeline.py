@@ -59,7 +59,7 @@ def main():
         sys.exit(1)
 
     # 1. Menarik Calon Produk Unik dari Lazada API
-    print("\n1️⃣ Mengambil calon produk unik dari Lazada Feed (Pages 1-5, limit=100)...")
+    print("\n1️⃣ Mengambil calon produk unik dari Lazada Feed (RM 2 - RM 500)...")
     ok, candidates = get_lazada_product_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, LAZADA_MEMBER_ID)
     
     if not ok:
@@ -74,7 +74,7 @@ def main():
     redis_skipped_count = 0
     vector_skipped_count = 0
 
-    print(f"🔍 Menapis {len(candidates)} calon produk unik (RM 10 - RM 500) menerusi Redis & Vector DB...")
+    print(f"🔍 Menapis {len(candidates)} calon produk unik menerusi Redis & Vector DB...")
 
     for prod in candidates:
         p_id = str(prod.get("productId") or prod.get("product_id") or prod.get("id"))

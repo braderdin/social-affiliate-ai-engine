@@ -5,7 +5,6 @@ import random
 import re
 import requests
 
-# Frasa dan kata kunci yang wajib ditapis
 EXCLUDE_PHRASES = [
     "not for sale", "[not for sale]", "free gift", "gift with purchase"
 ]
@@ -26,44 +25,75 @@ def sign_lazada(api_path, params, app_secret):
         hashlib.sha256
     ).hexdigest().upper()
 
-def get_valid_product_price(prod):
-    """
-    Menyemak dan memulangkan harga produk yang berada dalam julat RM 10.00 - RM 500.00.
-    Logik:
-    1. Semak harga diskaun/promosi terlebih dahulu. Jika 10.0 <= price <= 500.0, guna harga diskaun.
-    2. Jika harga diskaun tiada / di luar julat (contoh: RM 5.00), semak harga asal ( tanpa diskaun ).
-       Jika 10.0 <= normal_price <= 500.0, guna harga asal.
-    3. Jika kedua-duanya di luar julat, pulangkan 0.0 (produk ditolak).
-    """
-    def extract_float(val):
-        if val is None:
-            return 0.0
-        if isinstance(val, dict):
-            val = val.get("amount") or val.get("value") or 0.0
+def extract_price_val(val):
+    """Mengekstrak nilai float pertama dari pelbagai format data harga JSON."""
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, dict):
+        v = val.get("amount") or val.get("value") or val.get("price") or 0.0
+        return extract_price_val(v)
+    val_str = str(val).strip()
+    match = re.search(r'(\d+(?:\.\d+)?)', val_str)
+    if match:
         try:
-            clean_str = re.sub(r'[^0-9.]', '', str(val))
-            return float(clean_str) if clean_str else 0.0
+            return float(match.group(1))
         except (ValueError, TypeError):
             return 0.0
+    return 0.0
 
-    # 1. Semak harga diskaun
-    promo_keys = ["discountPrice", "salePrice", "special_price", "discount_price"]
-    for key in promo_keys:
-        p_val = extract_float(prod.get(key))
-        if 10.0 <= p_val <= 500.0:
+def get_valid_product_price(prod):
+    """
+    Menyemak julat harga produk (RM 2.00 - RM 500.00):
+    1. Semak harga diskaun/promosi. Jika 2.0 <= discount_price <= 500.0, guna harga diskaun.
+    2. Jika harga diskaun tiada ATAU di luar julat (RM < 2 atau RM > 500), langkau harga diskaun 
+       dan semak harga asal/normal (tanpa diskaun).
+    3. Jika harga asal/normal berada dalam julat 2.0 <= normal_price <= 500.0, guna harga asal.
+    4. Jika tiada medan harga dipulangkan oleh Feed API, benarkan sebagai produk sah lalai.
+    5. Jika harga eksplisit berada di luar julat, pulangkan 0.0 (ditapis).
+    """
+    # 1. Kumpul nilai harga diskaun/promosi
+    promo_values = []
+    for key in ["discountPrice", "salePrice", "special_price", "discount_price", "promotionPrice", "specialPrice"]:
+        v = extract_price_val(prod.get(key))
+        if v > 0:
+            promo_values.append(v)
+
+    if isinstance(prod.get("price"), dict):
+        v = extract_price_val(prod.get("price", {}).get("discountPrice")) or extract_price_val(prod.get("price", {}).get("salePrice"))
+        if v > 0:
+            promo_values.append(v)
+
+    # Semak jika mana-mana harga diskaun berada dalam julat RM 2.00 - RM 500.00
+    for p_val in promo_values:
+        if 2.0 <= p_val <= 500.0:
             return p_val
 
     # 2. Jika harga diskaun tiada / luar julat, semak harga normal / asal
-    normal_keys = ["price", "priceAmount", "originalPrice", "itemPrice"]
-    for key in normal_keys:
-        p_val = extract_float(prod.get(key))
-        if 10.0 <= p_val <= 500.0:
+    normal_values = []
+    for key in ["price", "originalPrice", "priceAmount", "itemPrice", "original_price"]:
+        v = extract_price_val(prod.get(key))
+        if v > 0:
+            normal_values.append(v)
+
+    if isinstance(prod.get("price"), dict):
+        v = extract_price_val(prod.get("price", {}).get("amount")) or extract_price_val(prod.get("price", {}).get("value")) or extract_price_val(prod.get("price", {}).get("originalPrice"))
+        if v > 0:
+            normal_values.append(v)
+
+    for p_val in normal_values:
+        if 2.0 <= p_val <= 500.0:
             return p_val
+
+    # 3. Jika tiada sebarang medan harga dipulangkan dalam JSON Feed API
+    if not promo_values and not normal_values:
+        return 10.0  # Produk dianggap sah dalam julat lalai jika API tidak sertakan medan harga
 
     return 0.0
 
 def is_valid_product(prod):
-    """Semakan kualiti produk: menapis barangan percuma dan harga di luar RM 10.00 - RM 500.00"""
+    """Semakan kualiti produk: menapis barangan percuma dan harga di luar RM 2.00 - RM 500.00"""
     p_name = str(prod.get("productName") or prod.get("title") or prod.get("name") or "").lower()
     
     # 1. Menapis frasa percuma / cenderahati
@@ -75,7 +105,7 @@ def is_valid_product(prod):
         if re.search(r'\b' + re.escape(word) + r'\b', p_name):
             return False
 
-    # 3. Semakan julat harga munasabah (RM 10.00 - RM 500.00)
+    # 3. Semakan julat harga munasabah (RM 2.00 - RM 500.00)
     valid_price = get_valid_product_price(prod)
     if valid_price == 0.0:
         return False
@@ -84,8 +114,8 @@ def is_valid_product(prod):
 
 def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=None):
     """
-    Mengumpul sekurang-kurangnya 20-30 produk UNIK dari Lazada Feed API (limit=100)
-    merentasi muka surat 1 hingga 5.
+    Mengumpul sekurang-kurangnya 25-35 produk UNIK dari pelbagai kategori dari Lazada Feed API
+    merentasi offerType 1, 2, 3 dan muka surat 1-5.
     """
     domain = "api.lazada.com.my"
     base_url = f"https://{domain}/rest"
@@ -95,9 +125,8 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
     unique_candidates = []
     seen_ids = set()
 
-    pages = list(range(1, 6))
-    
-    for page in pages:
+    # Mula dari Page 1 hingga 5 secara berurutan, semak offerType 1, 2, 3
+    for page in range(1, 6):
         for offer_type in ["1", "2", "3"]:
             timestamp = str(int(time.time() * 1000))
             feed_params = {
@@ -107,12 +136,12 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
                 "offerType": offer_type,
                 "userToken": str(user_token).strip(),
                 "page": str(page),
-                "limit": "100"  # Mengambil 100 item setinggi mungkin dalam 1 panggilan API
+                "limit": "20"
             }
             feed_params["sign"] = sign_lazada(feed_path, feed_params, app_secret)
 
             try:
-                res_feed = requests.get(feed_url, params=feed_params, timeout=25)
+                res_feed = requests.get(feed_url, params=feed_params, timeout=20)
                 feed_json = res_feed.json()
 
                 code = feed_json.get("code")
@@ -142,15 +171,16 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
             except Exception:
                 continue
 
-        if len(unique_candidates) >= 30:
+        if len(unique_candidates) >= 25:
             break
 
     if not unique_candidates:
         return False, {
-            "error": "Product Feed API memulangkan 0 produk sah di dalam julat harga RM 10-500 merentasi Page 1-5.",
+            "error": "Product Feed API memulangkan 0 produk sah di dalam julat harga RM 2-500 merentasi Page 1-5.",
             "status": "FEED_FILTERED_EMPTY"
         }
 
+    # Rawakkan susunan produk untuk menjamin variasi pelbagai kategori
     random.shuffle(unique_candidates)
     return True, unique_candidates
 
