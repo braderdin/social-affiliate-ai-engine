@@ -10,6 +10,7 @@ from src.lazada_api import get_lazada_product
 from src.ai_persona import generate_caption
 from src.telegram_bot import send_photo_to_telegram
 from src.redis_db import is_product_posted, mark_product_posted
+from src.vector_db import is_similar_product_posted, mark_vector_posted
 
 # Muat turun tetapan dari .env.local
 load_dotenv('.env.local')
@@ -42,6 +43,9 @@ def main():
     
     UPSTASH_REDIS_REST_URL = sanitize_value(os.getenv("UPSTASH_REDIS_REST_URL"))
     UPSTASH_REDIS_REST_TOKEN = sanitize_value(os.getenv("UPSTASH_REDIS_REST_TOKEN"))
+
+    UPSTASH_VECTOR_REST_URL = sanitize_value(os.getenv("UPSTASH_VECTOR_REST_URL"))
+    UPSTASH_VECTOR_REST_TOKEN = sanitize_value(os.getenv("UPSTASH_VECTOR_REST_TOKEN"))
     
     # Semakan Kunci Wajib Lazada
     missing_keys = []
@@ -53,31 +57,49 @@ def main():
         print(f"🔴 [RALAT KRITIKAL]: Kunci persekitaran tidak lengkap: {missing_keys}")
         sys.exit(1)
 
-    # 2. Ambil Produk Real dari Lazada API (NO DUMMY ALLOWED)
-    print("\n1️⃣ Mengambil produk real dari Lazada API...")
-    lazada_ok, product = get_lazada_product(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, LAZADA_MEMBER_ID)
-    
-    if not lazada_ok:
+    # 2. Gelung Carian Produk Dinamik (Mencari Item yang Lulus Semakan Redis & Vector)
+    selected_product = None
+    MAX_ATTEMPTS = 5
+
+    print("\n1️⃣ Mengambil produk real dari Lazada API & Menapis Duplikasi...")
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        print(f"\n🔄 [PERCUBAAN {attempt}/{MAX_ATTEMPTS}] Menarik data dari Lazada Feed...")
+        lazada_ok, product = get_lazada_product(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, LAZADA_MEMBER_ID)
+        
+        if not lazada_ok:
+            print(f"⚠️ Percubaan {attempt} gagal memulangkan produk: {product}")
+            continue
+
+        product_id = product.get("id")
+        product_title = product.get("title")
+
+        # Semakan A: Upstash Redis (Tepat ID Produk dalam 7 Hari)
+        if UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
+            if is_product_posted(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, product_id):
+                print(f"⏭️ [REDIS] Produk ID {product_id} ('{product_title}') pernah dihantar dalam 7 hari lepas. Mencuba produk lain...")
+                continue
+
+        # Semakan B: Upstash Vector DB (Keserupaan Makna > 85% dalam 2 Hari)
+        if UPSTASH_VECTOR_REST_URL and UPSTASH_VECTOR_REST_TOKEN:
+            if is_similar_product_posted(UPSTASH_VECTOR_REST_URL, UPSTASH_VECTOR_REST_TOKEN, product_title):
+                print(f"⏭️ [VECTOR DB] Kategori/Fungsi '{product_title}' terlalu serupa dengan produk 48 jam lepas. Mencuba produk lain...")
+                continue
+
+        # Lulus semua semakan!
+        selected_product = product
+        print(f"🟢 [PRODUK BAHARU DIPILIH]: '{product_title}' (ID: {product_id})")
+        break
+
+    if not selected_product:
         print("\n==================================================")
-        print("🔴 [RALAT KRITIKAL LAZADA API]: Gagal mendapatkan produk real!")
+        print("🔴 [RALAT PIPELINE]: Tiada produk baharu yang lulus semakan Redis/Vector selepas 5 percubaan.")
         print("==================================================")
-        print(f"Laporan Ralat: {json.dumps(product, indent=2)}")
         print("❌ Versi dummy / fallback dilarang keras. Skrip dihentikan.")
         sys.exit(1)
 
-    print(f"🟢 [LAZADA OK]: Ditemui produk '{product['title']}' (ID: {product['id']})")
-
-    # 3. Semak Duplikasi via Upstash Redis
-    if UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
-        if is_product_posted(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, product["id"]):
-            print(f"⏭️ [REDIS] Produk ID {product['id']} sudah pernah dihantar sebelum ini. Melangkaui pipeline.")
-            return
-    else:
-        print("⚠️ [REDIS NOTICE]: Tetapan Redis tiada, melangkau semakan duplikasi.")
-
-    # 4. Jana AI Caption
-    print("\n2️⃣ Menjana AI Caption...")
-    ai_ok, caption = generate_caption(OPENROUTER_BASE_URL, OPENROUTER_MODEL, OPENROUTER_API_KEY, product["title"], product["desc"])
+    # 3. Jana AI Caption
+    print("\n2️⃣ Menjana AI Caption Dinamik...")
+    ai_ok, caption = generate_caption(OPENROUTER_BASE_URL, OPENROUTER_MODEL, OPENROUTER_API_KEY, selected_product["title"], selected_product["desc"])
     
     if not ai_ok:
         print(f"🔴 [AI ERROR]: Gagal menjana caption: {caption}")
@@ -85,14 +107,22 @@ def main():
 
     print(f"\n--- [CAPTION GENERATED] ---\n{caption}\n---------------------------\n")
 
-    # 5. Hantar ke Telegram
+    # 4. Hantar ke Telegram
     print("3️⃣ Menghantar ke Telegram...")
-    tg_ok, tg_res = send_photo_to_telegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, caption, product["image"], product["link"])
+    tg_ok, tg_res = send_photo_to_telegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, caption, selected_product["image"], selected_product["link"])
     
     if tg_ok:
         print("🟢 [SUCCESS] Berjaya dipost ke Telegram!")
+        
+        # Merekod ke Upstash Redis (TTL 7 Hari)
         if UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
-            mark_product_posted(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, product["id"])
+            mark_product_posted(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, selected_product["id"])
+            print("💾 [REDIS] ID produk disimpan dengan TTL 7 Hari.")
+
+        # Merekod ke Upstash Vector DB (Memory Embedding 2 Hari)
+        if UPSTASH_VECTOR_REST_URL and UPSTASH_VECTOR_REST_TOKEN:
+            mark_vector_posted(UPSTASH_VECTOR_REST_URL, UPSTASH_VECTOR_REST_TOKEN, selected_product["id"], selected_product["title"])
+            print("💾 [VECTOR DB] Vector embedding disimpan ke Upstash Vector DB.")
     else:
         print(f"🔴 [TELEGRAM FAIL]: {tg_res}")
         sys.exit(1)
