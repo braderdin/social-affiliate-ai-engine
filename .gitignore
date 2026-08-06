@@ -160,6 +160,7 @@ venv.bak/
 .dev.vars
 .env.example
 .clinerules
+.Master_Plan/
 
 
 
