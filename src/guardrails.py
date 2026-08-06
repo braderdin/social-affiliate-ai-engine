@@ -48,7 +48,7 @@ def evaluate_product(prod):
     Menilai kelayakan produk mengikut:
     1. Status outOfStock
     2. Semakan Kata Kunci Disekat (Non-Halal, GWP, dll.)
-    3. Julat Harga Idaman RM 10.00 - RM 1000.00
+    3. Julat Harga Idaman RM 10.00 - RM 500.00
     """
     if prod.get("outOfStock") is True or str(prod.get("outOfStock")).lower() == "true":
         return False, 0.0, "Habis Stok (outOfStock)"
@@ -70,8 +70,8 @@ def evaluate_product(prod):
     if price_val >= 10000.0:
         return False, price_val, "Harga Dummy/Out of Stock (> RM 10,000)"
 
-    # Julat Standard RM 10.00 - RM 1000.00
-    if 10.0 <= price_val <= 1000.0:
+    # Julat Standard RM 10.00 - RM 500.00
+    if 10.0 <= price_val <= 500.0:
         return True, price_val, "Harga Lulus"
 
-    return False, price_val, "Luar Julat RM10-RM1000"
+    return False, price_val, "Luar Julat RM10-RM500"
