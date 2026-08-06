@@ -5,9 +5,12 @@ import random
 import re
 import requests
 
-EXCLUDE_KEYWORDS = [
-    "not for sale", "[not for sale]", "gwp", "free gift", 
-    "sample", "tester", "foc", "gift with purchase"
+# Kata kunci yang wajib ditapis
+EXCLUDE_PHRASES = [
+    "not for sale", "[not for sale]", "free gift", "gift with purchase"
+]
+EXCLUDE_WORDS = [
+    "foc", "gwp", "sample", "tester"
 ]
 
 def sign_lazada(api_path, params, app_secret):
@@ -24,37 +27,57 @@ def sign_lazada(api_path, params, app_secret):
     ).hexdigest().upper()
 
 def parse_price(prod):
-    """Membaca dan membersihkan pelbagai format harga dari Lazada Feed API secara tepat"""
-    price_keys = [
-        "discountPrice", "price", "salePrice", "priceAmount", 
-        "originalPrice", "itemPrice", "special_price"
-    ]
-    for key in price_keys:
+    """
+    Membaca harga produk dengan mengutamakan harga diskaun/promosi.
+    Sesuai untuk menangani harga senarai palsu (Contoh: list price RM 99,994 tetapi discountPrice RM 25.00).
+    """
+    # 1. Semak harga diskaun/promosi dahulu
+    promo_keys = ["discountPrice", "salePrice", "special_price", "discount_price"]
+    for key in promo_keys:
+        val = prod.get(key)
+        if val is not None:
+            try:
+                clean_str = re.sub(r'[^0-9.]', '', str(val))
+                if clean_str:
+                    parsed = float(clean_str)
+                    if parsed > 0:
+                        return parsed
+            except (ValueError, TypeError):
+                continue
+
+    # 2. Semak harga am jika harga diskaun tiada
+    general_keys = ["price", "priceAmount", "originalPrice", "itemPrice"]
+    for key in general_keys:
         val = prod.get(key)
         if val is None and isinstance(prod.get("price"), dict):
             val = prod.get("price", {}).get("amount") or prod.get("price", {}).get("value")
 
         if val is not None:
             try:
-                # Bersihkan teks harga (Contoh: "RM 45.00" -> "45.00")
                 clean_str = re.sub(r'[^0-9.]', '', str(val))
                 if clean_str:
                     parsed = float(clean_str)
-                    if parsed >= 0:
+                    if parsed > 0:
                         return parsed
             except (ValueError, TypeError):
                 continue
+
     return 0.0
 
 def is_valid_product(prod):
-    """Semakan kualiti produk: menapis barangan percuma dan harga tidak munasabah"""
+    """Semakan kualiti produk: menapis barangan percuma dan harga tidak munasabah (> RM 500.00)"""
     p_name = str(prod.get("productName") or prod.get("title") or prod.get("name") or "").lower()
     
-    # 1. Menapis barangan percuma / sampel / cenderahati
-    if any(kw in p_name for kw in EXCLUDE_KEYWORDS):
+    # 1. Menapis frasa percuma / cenderahati
+    if any(phrase in p_name for phrase in EXCLUDE_PHRASES):
         return False
 
-    # 2. Semakan harga anjal (RM 0.00 - RM 500.00)
+    # 2. Menapis perkataan percuma secara tepat (\b word boundary)
+    for word in EXCLUDE_WORDS:
+        if re.search(r'\b' + re.escape(word) + r'\b', p_name):
+            return False
+
+    # 3. Semakan julat harga munasabah (RM 0.00 - RM 500.00)
     price = parse_price(prod)
     if price > 500.0:
         return False
@@ -63,8 +86,8 @@ def is_valid_product(prod):
 
 def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=None):
     """
-    Melakukan Smart Page Traversal (Page 1 hingga 10) dan mengumpul
-    sekurang-kurangnya 15-20 produk UNIK melepasi penapis kualiti.
+    Mengumpul sekurang-kurangnya 15-20 produk UNIK dari Lazada Feed API
+    merentasi muka surat 1 hingga 10.
     """
     domain = "api.lazada.com.my"
     base_url = f"https://{domain}/rest"
@@ -74,14 +97,11 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
     unique_candidates = []
     seen_ids = set()
 
+    # Utamakan offerType=1 (Feed Utama) merentasi muka surat 1 hingga 10
     pages = list(range(1, 11))
-    random.shuffle(pages)
-
+    
     for page in pages:
-        offer_types = ["1", "2", "3"]
-        random.shuffle(offer_types)
-
-        for offer_type in offer_types:
+        for offer_type in ["1", "2", "3"]:
             timestamp = str(int(time.time() * 1000))
             feed_params = {
                 "app_key": str(app_key).strip(),
@@ -111,14 +131,22 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
                     for p in prods:
                         if is_valid_product(p):
                             p_id = str(p.get("productId") or p.get("product_id") or p.get("id") or "")
-                            if p_id and p_id not in seen_ids:
+                            pics = p.get("pictures") or p.get("image_url") or p.get("image") or p.get("picUrl")
+                            
+                            img_url = ""
+                            if isinstance(pics, list) and len(pics) > 0:
+                                img_url = pics[0]
+                            elif isinstance(pics, str):
+                                img_url = pics
+
+                            if p_id and img_url and p_id not in seen_ids:
                                 seen_ids.add(p_id)
                                 unique_candidates.append(p)
             except Exception:
                 continue
 
-        # Berhenti jika kolam calon unik sudah mencukupi (>= 15 produk)
-        if len(unique_candidates) >= 15:
+        # Berhenti secara automatik sebaik sahaja jumlah produk unik mencukupi
+        if len(unique_candidates) >= 20:
             break
 
     if not unique_candidates:
@@ -127,6 +155,7 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
             "status": "FEED_FILTERED_EMPTY"
         }
 
+    # Rawakkan susunan produk supaya pilihan produk sentiasa dinamik pada setiap larian
     random.shuffle(unique_candidates)
     return True, unique_candidates
 
@@ -190,7 +219,7 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
     return ""
 
 def get_lazada_product(app_key, app_secret, user_token, member_id=None):
-    """Fungsi sokongan langsung untuk pipeline"""
+    """Fungsi sokongan terus bagi kegunaan skrip diagnostik"""
     ok, candidates = get_lazada_product_candidates(app_key, app_secret, user_token, member_id)
     if not ok:
         return False, candidates
