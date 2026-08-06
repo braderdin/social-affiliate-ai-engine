@@ -111,6 +111,7 @@ def fetch_lazada_feed_candidates(app_key, app_secret, user_token, max_items=100)
                             "image": img_url,
                             "discountPrice": prod.get("discountPrice"),
                             "price": prod.get("price") or prod.get("originalPrice"),
+                            "outOfStock": prod.get("outOfStock"),
                             "desc": f"Promosi khas {p_name} di Lazada."
                         })
                         if len(candidates) >= max_items:
@@ -189,36 +190,47 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
 
     return ""
 
+def parse_and_normalize_price(raw_val):
+    """
+    Menukarkan nilai harga ke format float dan menormalkan unit sen daripada Lazada API.
+    Contoh: 20028.0 dibahagikan dengan 100 menjadi RM 200.28.
+    """
+    if raw_val is None:
+        return None
+    try:
+        v = float(raw_val)
+        # Tapis harga acuan dummy / out of stock penjual (> RM 100,000)
+        if v <= 0 or v >= 100000.0:
+            return None
+        # Auto-normalisasi jika harga dipulangkan dalam unit sen (misalnya 20028.0 -> 200.28)
+        if v > 1000.0 and (v / 100.0) <= 1000.0:
+            v = v / 100.0
+        return v
+    except (ValueError, TypeError):
+        return None
+
 def evaluate_price(prod):
     """
     Menilai harga produk berdasarkan julat munasabah RM 2.00 hingga RM 1000.00.
-    Keutamaan: discountPrice -> price / originalPrice.
+    Mengendalikan semakan outOfStock dan keutamaan: discountPrice -> price / originalPrice.
     """
-    disc_price = None
-    reg_price = None
+    if prod.get("outOfStock") is True or str(prod.get("outOfStock")).lower() == "true":
+        return False, 0.0, "Habis Stok (outOfStock)"
 
-    try:
-        if prod.get("discountPrice") is not None:
-            disc_price = float(prod.get("discountPrice"))
-    except (ValueError, TypeError):
-        disc_price = None
+    disc_price = parse_and_normalize_price(prod.get("discountPrice"))
+    reg_price = parse_and_normalize_price(prod.get("price"))
 
-    try:
-        if prod.get("price") is not None:
-            reg_price = float(prod.get("price"))
-    except (ValueError, TypeError):
-        reg_price = None
-
-    # 1. Semak harga diskaun
+    # 1. Semak harga diskaun yang sudah dinormalkan
     if disc_price is not None and 2.0 <= disc_price <= 1000.0:
         return True, disc_price, "Diskaun"
 
-    # 2. Semak harga asal jika diskaun tiada atau di luar julat RM2-RM1000
+    # 2. Semak harga asal jika diskaun tiada atau di luar julat
     if reg_price is not None and 2.0 <= reg_price <= 1000.0:
         return True, reg_price, "Harga Asal"
 
     active_p = disc_price if disc_price is not None else reg_price
-    return False, active_p, "Luar Julat RM2-RM1000"
+    display_p = active_p if active_p is not None else 0.0
+    return False, display_p, "Luar Julat RM2-RM1000"
 
 def main():
     print("\n==================================================")
@@ -288,11 +300,11 @@ def main():
         p_id = prod["id"]
         p_title = prod["title"]
 
-        # LAPISAN 1: Semakan Harga (RM 2.00 - RM 1000.00)
+        # LAPISAN 1: Semakan Harga & Normalisasi (RM 2.00 - RM 1000.00)
         is_price_valid, active_price, price_type = evaluate_price(prod)
         if not is_price_valid:
             stats["skipped_price"] += 1
-            print(f"  ⏩ [PRICE FILTER] #{stats['total_evaluated']} ID {p_id}: RM {active_price} ({price_type}). Langkau.")
+            print(f"  ⏩ [PRICE FILTER] #{stats['total_evaluated']} ID {p_id}: RM {active_price:.2f} ({price_type}). Langkau.")
             continue
 
         # LAPISAN 2: Semakan Upstash Redis (Duplikasi Produk Tepat 7 Hari)
@@ -310,7 +322,7 @@ def main():
                 continue
 
         # Penjanaan Tracking Link Sebenar
-        print(f"\n  🎯 [LULUS TAPISAN] #{stats['total_evaluated']} ID {p_id} ('{p_title[:35]}...') Harga: RM {active_price:.2f}")
+        print(f"\n  🎯 [LULUS TAPISAN] #{stats['total_evaluated']} ID {p_id} ('{p_title[:35]}...') Harga Dinormalkan: RM {active_price:.2f}")
         print("  🔗 Menjana Affiliate Tracking Link...")
         aff_link = generate_tracking_link(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, p_id)
 
