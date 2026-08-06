@@ -43,7 +43,7 @@ def discover_lazada_categories():
     print("📡 Memulakan imbasan merentasi offerType dan halaman feed...\n")
 
     for offer_type in ["1", "2", "3"]:
-        for page in range(1, 4):  # Imbas halaman 1 hingga 3
+        for page in range(1, 11):  # Imbas halaman 1 hingga 10
             timestamp = str(int(time.time() * 1000))
             feed_params = {
                 "app_key": app_key,
@@ -52,7 +52,7 @@ def discover_lazada_categories():
                 "offerType": str(offer_type),
                 "userToken": user_token,
                 "page": str(page),
-                "limit": "20"
+                "limit": "50"
             }
             feed_params["sign"] = sign_lazada(feed_path, feed_params, app_secret)
 

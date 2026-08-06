@@ -62,7 +62,7 @@ def main():
 
     # 2. Tarik Produk Live Daripada Lazada API
     print("1️⃣ Menarik calon produk LIVE dari Lazada Feed API...")
-    candidates = fetch_targeted_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_user_token, max_items=100)
+    candidates = fetch_targeted_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_user_token, max_items=300)
 
     if not candidates:
         print("🔴 [RALAT]: Lazada Feed API memulangkan 0 produk.")

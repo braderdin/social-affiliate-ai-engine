@@ -7,6 +7,10 @@ TARGET_CATEGORIES = [
     "3752",      # Makanan, Minuman & Barangan Bayi / Kanak-kanak
     "10000343",  # Barangan Dapur & Bekas Makanan
     "275"        # Perkakas Elektrik Rumah (Kipas, Aircond, Air Fryer, dll.)
+    "10000344",  # Alat Tulis, Pejabat & Kelengkapan Sekolah (Persona Cikgu)
+    "1902",      # Beg Tangan & Aksesori Wanita
+    "42062401"   # Pakaian Santai & Sukan Keluarga
+    "10168"      # Mainan, Permainan Kanak-Kanak & Hobi (Toys & Games)
 ]
 
 # Senarai Hitam Strict (Non-Halal, Alkohol & Jenama Arak, Promo Fake/GWP, Barangan Mewah/Bukan Persona)
@@ -23,7 +27,7 @@ BLACKLIST_KEYWORDS = [
     "blind box", "tester", "prize", "lazland only", "cgwp", "voucher", "e-voucher",
     # Barangan Mewah / Industri / Bukan Persona Surirumah
     "coin", "silver", "gold", "pendant", "caravan", "campervan",
-    "machine", "testing", "sneakers", "jade", "watch", "quartz", "automatic",
+    "testing", "sneakers", "jade", "watch", "quartz",
     "diamond", "luxury", "machinery"
 ]
 
