@@ -1,7 +1,13 @@
 import time
 import hmac
 import hashlib
+import random
 import requests
+
+EXCLUDE_KEYWORDS = [
+    "not for sale", "[not for sale]", "gwp", "free gift", 
+    "sample", "tester", "foc", "gift with purchase"
+]
 
 def sign_lazada(api_path, params, app_secret):
     """Menjana HMAC-SHA256 Signature mengikut piawaian Lazada Open Platform"""
@@ -16,24 +22,51 @@ def sign_lazada(api_path, params, app_secret):
         hashlib.sha256
     ).hexdigest().upper()
 
-def get_lazada_product(app_key, app_secret, user_token, member_id=None):
+def is_valid_product(prod):
+    """Semakan kualiti produk: menapis barangan percuma dan harga tidak munasabah"""
+    p_name = str(prod.get("productName") or prod.get("title") or prod.get("name") or "").lower()
+    
+    # 1. Menapis barangan percuma / sampel / cenderahati
+    if any(kw in p_name for kw in EXCLUDE_KEYWORDS):
+        return False
+
+    # 2. Menapis harga di luar julat RM 0.00 - RM 500.00
+    raw_price = (
+        prod.get("discountPrice") 
+        or prod.get("price") 
+        or prod.get("salePrice") 
+        or prod.get("priceAmount") 
+        or 0
+    )
+    try:
+        price = float(raw_price)
+    except (ValueError, TypeError):
+        price = 0.0
+
+    if price < 0.0 or price > 500.0:
+        return False
+
+    return True
+
+def get_lazada_product(app_key, app_secret, user_token, member_id=None, redis_url=None, redis_token=None):
     """
     Menarik produk real-time dan menjana pautan affiliate sebenar dari Lazada API.
-    Memerlukan user_token rasmi dari .env.local (LAZADA_USER_TOKEN).
+    Melakukan pemilihan secara dinamik dan menapis barangan percuma / harga melampau.
     """
     domain = "api.lazada.com.my"
     base_url = f"https://{domain}/rest"
 
-    # ==================================================
-    # LANGKAH 1: Get Product Feed (/marketing/product/feed)
-    # Mencari produk di bawah offerType 1, 2, atau 3
-    # ==================================================
     feed_path = "/marketing/product/feed"
     feed_url = f"{base_url}{feed_path}"
     
     found_products = []
+    
+    # Rawak helaian muka surat (page 1 hingga 3) untuk variasi produk dinamik
+    random_page = str(random.randint(1, 3))
+    offer_types = ["1", "2", "3"]
+    random.shuffle(offer_types)
 
-    for offer_type in ["1", "2", "3"]:
+    for offer_type in offer_types:
         timestamp = str(int(time.time() * 1000))
         feed_params = {
             "app_key": str(app_key).strip(),
@@ -41,7 +74,7 @@ def get_lazada_product(app_key, app_secret, user_token, member_id=None):
             "sign_method": "sha256",
             "offerType": offer_type,
             "userToken": str(user_token).strip(),
-            "page": "1",
+            "page": random_page,
             "limit": "20"
         }
         feed_params["sign"] = sign_lazada(feed_path, feed_params, app_secret)
@@ -61,15 +94,23 @@ def get_lazada_product(app_key, app_secret, user_token, member_id=None):
                     prods = result_data
 
                 if prods:
-                    found_products = prods
-                    break
+                    # Tapis produk yang sah sahaja (RM 0 - RM 500 & Bukan Not For Sale)
+                    valid_prods = [p for p in prods if is_valid_product(p)]
+                    if valid_prods:
+                        # Rawakkan susunan produk supaya sentiasa dinamik
+                        random.shuffle(valid_prods)
+                        found_products = valid_prods
+                        break
         except Exception:
             continue
 
     if not found_products:
-        return False, {"error": "Product Feed API memulangkan 0 produk merentasi offerType 1, 2, dan 3."}
+        return False, {
+            "error": "Product Feed API memulangkan 0 produk sah di dalam julat RM 0-500 (atau semua item tergolong sebagai sampel/Not For Sale).",
+            "status": "FEED_FILTERED_EMPTY"
+        }
 
-    # Ekstrak produk pertama yang sah ID dan Gambar
+    # Ekstrak produk pertama dari senarai yang telah dirawakkan
     target_product = None
     for prod in found_products:
         p_id = prod.get("productId") or prod.get("product_id") or prod.get("id")
@@ -99,7 +140,6 @@ def get_lazada_product(app_key, app_secret, user_token, member_id=None):
 
     # ==================================================
     # LANGKAH 2A: Generate Tracking Link (/marketing/product/link)
-    # Pembacaan struktur JSON: result -> data -> trackingLink
     # ==================================================
     tracking_link = ""
     link_path = "/marketing/product/link"
@@ -166,7 +206,7 @@ def get_lazada_product(app_key, app_secret, user_token, member_id=None):
         except Exception:
             pass
 
-    # Semakan Ketat (DILARANG DUMMY)
+    # Semakan Ketat (NO DUMMY ALLOWED)
     if not tracking_link or not real_image:
         return False, {
             "error": "Lazada API tidak memulangkan Link Affiliate atau Imej yang sah. Versi dummy dilarang keras.",
