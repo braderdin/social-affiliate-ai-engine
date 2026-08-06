@@ -4,12 +4,17 @@ on:
   schedule:
     # Berjalan secara automatik setiap 2 jam
     - cron: '0 */2 * * *'
-  workflow_dispatch: # Pemicu butang "Run workflow" secara manual di GitHub UI
+  workflow_dispatch: # Pemicu butang "Run workflow" secara manual
+
+# PERELAKKAN SEKATAN: Pembatalan automatik larian lama jika larian baharu dipemicu
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 5 # MEMAKSA BTH CANCEL JIKA MELEBIHI 5 MINIT (ELAK SEKATAN)
+    timeout-minutes: 5 # HAD MASA MAKSIMUM: Mematikan tugasan jika melebihi 5 minit
 
     steps:
       - name: Checkout Repository
@@ -27,7 +32,7 @@ jobs:
 
       - name: Execute Pipeline Engine
         env:
-          # Memaksa Python memaparkan log secara real-time terus ke paparan skrin
+          # Memaksa paparan log keluar secara real-time di terminal GitHub
           PYTHONUNBUFFERED: "1"
 
           # Kunci Persekitaran Telegram
@@ -58,7 +63,7 @@ jobs:
           UPSTASH_VECTOR_REST_URL: ${{ secrets.UPSTASH_VECTOR_REST_URL }}
           UPSTASH_VECTOR_REST_TOKEN: ${{ secrets.UPSTASH_VECTOR_REST_TOKEN }}
 
-          # Suis Persekitaran GitHub Actions (Diaktifkan Kedua-duanya)
+          # Suis Persekitaran GitHub Actions (Aktif Kedua-duanya)
           ENABLE_TELEGRAM: "true"
           ENABLE_FACEBOOK: "true"
         run: python bin/run_pipeline.py
