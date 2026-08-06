@@ -161,6 +161,7 @@ venv.bak/
 .env.example
 .clinerules
 .Master_Plan/
+.agents/
 
 
 
