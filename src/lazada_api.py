@@ -5,7 +5,7 @@ import random
 import re
 import requests
 
-# Kata kunci yang wajib ditapis
+# Frasa dan kata kunci yang wajib ditapis
 EXCLUDE_PHRASES = [
     "not for sale", "[not for sale]", "free gift", "gift with purchase"
 ]
@@ -26,46 +26,44 @@ def sign_lazada(api_path, params, app_secret):
         hashlib.sha256
     ).hexdigest().upper()
 
-def parse_price(prod):
+def get_valid_product_price(prod):
     """
-    Membaca harga produk dengan mengutamakan harga diskaun/promosi.
-    Sesuai untuk menangani harga senarai palsu (Contoh: list price RM 99,994 tetapi discountPrice RM 25.00).
+    Menyemak dan memulangkan harga produk yang berada dalam julat RM 10.00 - RM 500.00.
+    Logik:
+    1. Semak harga diskaun/promosi terlebih dahulu. Jika 10.0 <= price <= 500.0, guna harga diskaun.
+    2. Jika harga diskaun tiada / di luar julat (contoh: RM 5.00), semak harga asal ( tanpa diskaun ).
+       Jika 10.0 <= normal_price <= 500.0, guna harga asal.
+    3. Jika kedua-duanya di luar julat, pulangkan 0.0 (produk ditolak).
     """
-    # 1. Semak harga diskaun/promosi dahulu
+    def extract_float(val):
+        if val is None:
+            return 0.0
+        if isinstance(val, dict):
+            val = val.get("amount") or val.get("value") or 0.0
+        try:
+            clean_str = re.sub(r'[^0-9.]', '', str(val))
+            return float(clean_str) if clean_str else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+
+    # 1. Semak harga diskaun
     promo_keys = ["discountPrice", "salePrice", "special_price", "discount_price"]
     for key in promo_keys:
-        val = prod.get(key)
-        if val is not None:
-            try:
-                clean_str = re.sub(r'[^0-9.]', '', str(val))
-                if clean_str:
-                    parsed = float(clean_str)
-                    if parsed > 0:
-                        return parsed
-            except (ValueError, TypeError):
-                continue
+        p_val = extract_float(prod.get(key))
+        if 10.0 <= p_val <= 500.0:
+            return p_val
 
-    # 2. Semak harga am jika harga diskaun tiada
-    general_keys = ["price", "priceAmount", "originalPrice", "itemPrice"]
-    for key in general_keys:
-        val = prod.get(key)
-        if val is None and isinstance(prod.get("price"), dict):
-            val = prod.get("price", {}).get("amount") or prod.get("price", {}).get("value")
-
-        if val is not None:
-            try:
-                clean_str = re.sub(r'[^0-9.]', '', str(val))
-                if clean_str:
-                    parsed = float(clean_str)
-                    if parsed > 0:
-                        return parsed
-            except (ValueError, TypeError):
-                continue
+    # 2. Jika harga diskaun tiada / luar julat, semak harga normal / asal
+    normal_keys = ["price", "priceAmount", "originalPrice", "itemPrice"]
+    for key in normal_keys:
+        p_val = extract_float(prod.get(key))
+        if 10.0 <= p_val <= 500.0:
+            return p_val
 
     return 0.0
 
 def is_valid_product(prod):
-    """Semakan kualiti produk: menapis barangan percuma dan harga tidak munasabah (> RM 500.00)"""
+    """Semakan kualiti produk: menapis barangan percuma dan harga di luar RM 10.00 - RM 500.00"""
     p_name = str(prod.get("productName") or prod.get("title") or prod.get("name") or "").lower()
     
     # 1. Menapis frasa percuma / cenderahati
@@ -77,17 +75,17 @@ def is_valid_product(prod):
         if re.search(r'\b' + re.escape(word) + r'\b', p_name):
             return False
 
-    # 3. Semakan julat harga munasabah (RM 0.00 - RM 500.00)
-    price = parse_price(prod)
-    if price > 500.0:
+    # 3. Semakan julat harga munasabah (RM 10.00 - RM 500.00)
+    valid_price = get_valid_product_price(prod)
+    if valid_price == 0.0:
         return False
 
     return True
 
 def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=None):
     """
-    Mengumpul sekurang-kurangnya 15-20 produk UNIK dari Lazada Feed API
-    merentasi muka surat 1 hingga 10.
+    Mengumpul sekurang-kurangnya 20-30 produk UNIK dari Lazada Feed API (limit=100)
+    merentasi muka surat 1 hingga 5.
     """
     domain = "api.lazada.com.my"
     base_url = f"https://{domain}/rest"
@@ -97,8 +95,7 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
     unique_candidates = []
     seen_ids = set()
 
-    # Utamakan offerType=1 (Feed Utama) merentasi muka surat 1 hingga 10
-    pages = list(range(1, 11))
+    pages = list(range(1, 6))
     
     for page in pages:
         for offer_type in ["1", "2", "3"]:
@@ -110,12 +107,12 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
                 "offerType": offer_type,
                 "userToken": str(user_token).strip(),
                 "page": str(page),
-                "limit": "20"
+                "limit": "100"  # Mengambil 100 item setinggi mungkin dalam 1 panggilan API
             }
             feed_params["sign"] = sign_lazada(feed_path, feed_params, app_secret)
 
             try:
-                res_feed = requests.get(feed_url, params=feed_params, timeout=20)
+                res_feed = requests.get(feed_url, params=feed_params, timeout=25)
                 feed_json = res_feed.json()
 
                 code = feed_json.get("code")
@@ -145,17 +142,15 @@ def get_lazada_product_candidates(app_key, app_secret, user_token, member_id=Non
             except Exception:
                 continue
 
-        # Berhenti secara automatik sebaik sahaja jumlah produk unik mencukupi
-        if len(unique_candidates) >= 20:
+        if len(unique_candidates) >= 30:
             break
 
     if not unique_candidates:
         return False, {
-            "error": "Product Feed API memulangkan 0 produk sah di dalam julat RM 0-500 merentasi Page 1-10.",
+            "error": "Product Feed API memulangkan 0 produk sah di dalam julat harga RM 10-500 merentasi Page 1-5.",
             "status": "FEED_FILTERED_EMPTY"
         }
 
-    # Rawakkan susunan produk supaya pilihan produk sentiasa dinamik pada setiap larian
     random.shuffle(unique_candidates)
     return True, unique_candidates
 

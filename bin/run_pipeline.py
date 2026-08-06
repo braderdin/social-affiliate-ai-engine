@@ -27,7 +27,7 @@ def main():
     print("🚀 [FULL PIPELINE] Automasi Produk Real & Telegram")
     print("==================================================")
     
-    # Pembacaan Pemboleh Ubah Persekitaran (.env.local / GitHub Secrets)
+    # Pembacaan Pemboleh Ubah Persekitaran
     TELEGRAM_BOT_TOKEN = sanitize_value(os.getenv("TELEGRAM_BOT_TOKEN"))
     TELEGRAM_CHAT_ID = sanitize_value(os.getenv("TELEGRAM_CHAT_ID"))
     
@@ -59,7 +59,7 @@ def main():
         sys.exit(1)
 
     # 1. Menarik Calon Produk Unik dari Lazada API
-    print("\n1️⃣ Mengambil calon produk unik dari Lazada Feed (Pages 1-10)...")
+    print("\n1️⃣ Mengambil calon produk unik dari Lazada Feed (Pages 1-5, limit=100)...")
     ok, candidates = get_lazada_product_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, LAZADA_MEMBER_ID)
     
     if not ok:
@@ -71,7 +71,10 @@ def main():
 
     # 2. In-Feed Filtering Menerusi Gelung Calon Unik
     selected_product = None
-    print(f"🔍 Menapis {len(candidates)} calon produk unik menerusi Redis & Vector DB...")
+    redis_skipped_count = 0
+    vector_skipped_count = 0
+
+    print(f"🔍 Menapis {len(candidates)} calon produk unik (RM 10 - RM 500) menerusi Redis & Vector DB...")
 
     for prod in candidates:
         p_id = str(prod.get("productId") or prod.get("product_id") or prod.get("id"))
@@ -90,18 +93,21 @@ def main():
         # Semakan A: Upstash Redis (Tepat ID Produk dalam 7 Hari)
         if UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
             if is_product_posted(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, p_id):
-                print(f"⏭️ [REDIS] ID {p_id} ('{p_name}') pernah dipos dalam 7 hari. Mencuba item seterusnya...")
+                redis_skipped_count += 1
+                print(f"⏭️ [REDIS SKIP] ID {p_id} ('{p_name[:30]}...') disiar < 7 hari. Mencuba item seterusnya...")
                 continue
 
         # Semakan B: Upstash Vector DB (Keserupaan Makna > 85% dalam 2 Hari)
         if UPSTASH_VECTOR_REST_URL and UPSTASH_VECTOR_REST_TOKEN:
             if is_similar_product_posted(UPSTASH_VECTOR_REST_URL, UPSTASH_VECTOR_REST_TOKEN, p_name):
-                print(f"⏭️ [VECTOR DB] Tajuk '{p_name}' serupa dengan produk disiar < 48 jam lepas. Mencuba item seterusnya...")
+                vector_skipped_count += 1
+                print(f"⏭️ [VECTOR SKIP] Tajuk '{p_name[:30]}...' serupa < 48 jam. Mencuba item seterusnya...")
                 continue
 
         # Jana Pautan Affiliate Real
         tracking_link = generate_tracking_link(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, p_id)
         if not tracking_link:
+            print(f"⚠️ [LINK FAIL] Gagal jana affiliate link bagi ID {p_id}. Mencuba item seterusnya...")
             continue
 
         selected_product = {
@@ -111,12 +117,15 @@ def main():
             "image": img_url,
             "link": tracking_link
         }
-        print(f"🟢 [PRODUK BAHARU LULUS TIGA LAPISAN]: '{p_name}' (ID: {p_id})")
+        print(f"\n🟢 [PRODUK BAHARU LULUS TIGA LAPISAN]: '{p_name}' (ID: {p_id})")
         break
 
     if not selected_product:
         print("\n==================================================")
-        print("🔴 [RALAT PIPELINE]: Kesemua calon produk dari Lazada API telah pernah dihantar (Redis/Vector).")
+        print("🔴 [RALAT PIPELINE DIAGNOSTIK TERPERINCI]:")
+        print(f"   Jumlah calon disemak  : {len(candidates)}")
+        print(f"   Disekat oleh Redis    : {redis_skipped_count}")
+        print(f"   Disekat oleh Vector DB: {vector_skipped_count}")
         print("==================================================")
         print("❌ Versi dummy / fallback dilarang keras. Skrip dihentikan.")
         sys.exit(1)
