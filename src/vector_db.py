@@ -2,18 +2,18 @@ import time
 import requests
 
 SIMILARITY_THRESHOLD = 0.85
-TIME_WINDOW_2_DAYS = 172800  # 2 Hari dalam saat
+TIME_WINDOW_2_DAYS = 172800  # 2 Hari dalam saat (2 * 24 * 3600)
 
 def is_similar_product_posted(vector_url, vector_token, product_title):
     """
     Semak sama ada terdapat produk dengan makna/fungsi serupa (Cosine Similarity >= 0.85)
-    yang pernah dipos dalam tempoh 2 hari (172,800 saat) menggunakan Upstash Vector.
+    yang pernah dipos dalam tempoh 2 hari (172,800 saat) menggunakan Upstash Vector /query-data REST API.
     """
     if not vector_url or not vector_token or not product_title:
         return False
 
     clean_url = vector_url.rstrip('/')
-    query_url = f"{clean_url}/query"
+    query_url = f"{clean_url}/query-data"
     headers = {
         "Authorization": f"Bearer {vector_token}",
         "Content-Type": "application/json"
@@ -48,13 +48,13 @@ def is_similar_product_posted(vector_url, vector_token, product_title):
 
 def mark_vector_posted(vector_url, vector_token, product_id, product_title):
     """
-    Simpan vector embedding tajuk produk ke dalam Upstash Vector DB secara rasmi.
+    Simpan vector embedding tajuk produk ke dalam Upstash Vector DB menggunakan /upsert-data REST API.
     """
     if not vector_url or not vector_token or not product_id or not product_title:
         return False
 
     clean_url = vector_url.rstrip('/')
-    upsert_url = f"{clean_url}/upsert"
+    upsert_url = f"{clean_url}/upsert-data"
     headers = {
         "Authorization": f"Bearer {vector_token}",
         "Content-Type": "application/json"
@@ -62,7 +62,6 @@ def mark_vector_posted(vector_url, vector_token, product_id, product_title):
 
     current_time = int(time.time())
     
-    # Format Payload Rasmi Upstash Vector REST API
     payload = {
         "id": str(product_id),
         "data": str(product_title),

@@ -27,7 +27,7 @@ def main():
     print("🚀 [FULL PIPELINE] Automasi Produk Real & Telegram")
     print("==================================================")
     
-    # Pembacaan Pemboleh Ubah Persekitaran
+    # Pembacaan Pemboleh Ubah Persekitaran (.env.local / GitHub Secrets)
     TELEGRAM_BOT_TOKEN = sanitize_value(os.getenv("TELEGRAM_BOT_TOKEN"))
     TELEGRAM_CHAT_ID = sanitize_value(os.getenv("TELEGRAM_CHAT_ID"))
     
@@ -111,7 +111,7 @@ def main():
             "image": img_url,
             "link": tracking_link
         }
-        print(f"🟢 [PRODUK BAHARU LULUS]: '{p_name}' (ID: {p_id})")
+        print(f"🟢 [PRODUK BAHARU LULUS TIGA LAPISAN]: '{p_name}' (ID: {p_id})")
         break
 
     if not selected_product:
