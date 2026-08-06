@@ -4,9 +4,8 @@ on:
   schedule:
     # Berjalan secara automatik setiap 2 jam
     - cron: '0 */2 * * *'
-  workflow_dispatch: # Pemicu butang "Run workflow" secara manual
+  workflow_dispatch: # Pemicu butang "Run workflow" secara manual di GitHub Actions
 
-# PERELAKKAN SEKATAN: Pembatalan automatik larian lama jika larian baharu dipemicu
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -14,7 +13,7 @@ concurrency:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 5 # HAD MASA MAKSIMUM: Mematikan tugasan jika melebihi 5 minit
+    timeout-minutes: 15 # Ditingkatkan ke 15 minit bagi mengelakkan pembatalan paksa
 
     steps:
       - name: Checkout Repository
@@ -28,14 +27,16 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --no-cache-dir requests python-dotenv
           if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
       - name: Execute Pipeline Engine
         env:
-          # Memaksa paparan log keluar secara real-time di terminal GitHub
+          # Tetapan Path & Terminal Output Python
           PYTHONUNBUFFERED: "1"
+          PYTHONPATH: "."
 
-          # Kunci Persekitaran Telegram
+          # Kunci Persekitaran Telegram Bot
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
@@ -44,26 +45,29 @@ jobs:
           OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-          # Kunci Persekitaran Facebook Page API
-          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
-          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          # Kunci Persekitaran Facebook Page API (Sokongan Kepelbagaian Nama Kunci)
+          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN || secrets.FACEBOOK_PAGE_ACCESS_TOKEN || secrets.META_PAGE_ACCESS_TOKEN }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN || secrets.FB_PAGE_ACCESS_TOKEN || secrets.META_PAGE_ACCESS_TOKEN }}
+          META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN || secrets.FB_PAGE_ACCESS_TOKEN }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID || secrets.FB_PAGE_ID || secrets.META_PAGE_ID }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID || secrets.FACEBOOK_PAGE_ID || secrets.META_PAGE_ID }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID || secrets.FACEBOOK_PAGE_ID }}
 
           # Kunci Persekitaran Lazada Open Platform API
-          LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
-          LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET }}
+          LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY || secrets.LAZADA_LITEAPP_KEY }}
+          LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET || secrets.LAZADA_LITEAPP_SECRET }}
           LAZADA_USER_TOKEN: ${{ secrets.LAZADA_USER_TOKEN }}
-          LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
-          LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
+          LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY || secrets.LAZADA_APP_KEY }}
+          LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET || secrets.LAZADA_APP_SECRET }}
 
           # Kunci Persekitaran Upstash Redis & Vector DB
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-          UPSTASH_VECTOR_REST_URL: ${{ secrets.UPSTASH_VECTOR_REST_URL }}
+          UPSTASH_VECTOR_REST_URL: ${{ secrets.UPSTASH_VECTOR_REST_URL || secrets.UPSTASH_VECTOR_ENDPOINT_URL }}
+          UPSTASH_VECTOR_ENDPOINT_URL: ${{ secrets.UPSTASH_VECTOR_ENDPOINT_URL || secrets.UPSTASH_VECTOR_REST_URL }}
           UPSTASH_VECTOR_REST_TOKEN: ${{ secrets.UPSTASH_VECTOR_REST_TOKEN }}
 
-          # Suis Persekitaran GitHub Actions (Aktif Kedua-duanya)
+          # Suis Persekitaran
           ENABLE_TELEGRAM: "true"
           ENABLE_FACEBOOK: "true"
         run: python bin/run_pipeline.py
