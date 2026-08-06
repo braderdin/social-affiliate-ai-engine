@@ -38,10 +38,40 @@ def normalize_image_url(url):
         return f"https://{url}"
     return url
 
-def fetch_lazada_feed_candidates(app_key, app_secret, user_token, max_items=100):
+# Kategori Sasaran Rasmi Kekeluargaan & Surirumah
+TARGET_CATEGORIES = [
+    "10100539",  # Keperluan Rumah & Pembersihan Dapur
+    "1438",      # Penjagaan Kulit & Kecantikan Wanita
+    "3752",      # Makanan, Minuman & Barangan Bayi / Kanak-kanak
+    "10000343"   # Barangan Dapur & Bekas Makanan
+]
+
+# Senarai Hitam Strict (Non-Halal, Alkohol, Promo Fake/GWP, Barangan Mewah/Bukan Persona)
+BLACKLIST_KEYWORDS = [
+    # Non-Halal / Alkohol / Babi
+    "whisky", "whiskey", "liquor", "wine", "vodka", "alcohol", "beer", "rum",
+    "pork", "lard", "bacon", "ham", "non-halal", "non halal", "tokek", "arak",
+    # Promo Palsu / GWP / Gift
+    "gwp", "not for sale", "gift not for sale", "free gift", "sample",
+    "blind box", "tester", "prize", "lazland only", "cgwp", "voucher", "e-voucher",
+    # Barangan Mewah / Industri / Bukan Persona Surirumah
+    "coin", "silver", "gold", "pendant", "caravan", "campervan",
+    "machine", "testing", "sneakers", "jade", "watch", "quartz", "automatic",
+    "diamond", "luxury", "machinery"
+]
+
+def is_title_blacklisted(title):
+    """Menyemak sama ada tajuk produk mengandungi sebarang kata kunci disekat."""
+    lower_title = str(title or "").lower()
+    for kw in BLACKLIST_KEYWORDS:
+        if kw in lower_title:
+            return True, kw
+    return False, ""
+
+def fetch_targeted_lazada_candidates(app_key, app_secret, user_token, max_items=100):
     """
-    Menarik sehingga max_items (100) produk secara berperingkat dari Lazada API Feed
-    dengan menggolongkan pelbagai offerType dan pagination untuk kepelbagaian produk.
+    Menarik calon produk secara khusus daripada Kategori Kekeluargaan / Dapur / Bayi / Wanita
+    menggunakan parameter categoryL1 rasmi Lazada API Feed.
     """
     domain = "api.lazada.com.my"
     feed_path = "/marketing/product/feed"
@@ -50,13 +80,13 @@ def fetch_lazada_feed_candidates(app_key, app_secret, user_token, max_items=100)
     candidates = []
     seen_ids = set()
     
-    # Rawakkan giliran offerType dan halaman (page) untuk elak produk statik
-    offer_types = ["1", "2", "3"]
-    random.shuffle(offer_types)
-    pages = [1, 2, 3, 4, 5]
+    # Rawakkan kategori dan halaman untuk kepelbagaian produk
+    categories = list(TARGET_CATEGORIES)
+    random.shuffle(categories)
+    pages = [1, 2, 3]
     random.shuffle(pages)
 
-    for offer_type in offer_types:
+    for cat_id in categories:
         for page in pages:
             if len(candidates) >= max_items:
                 break
@@ -66,8 +96,9 @@ def fetch_lazada_feed_candidates(app_key, app_secret, user_token, max_items=100)
                 "app_key": str(app_key).strip(),
                 "timestamp": timestamp,
                 "sign_method": "sha256",
-                "offerType": str(offer_type),
+                "offerType": "1",
                 "userToken": str(user_token).strip(),
+                "categoryL1": str(cat_id),
                 "page": str(page),
                 "limit": "20"
             }
@@ -79,8 +110,7 @@ def fetch_lazada_feed_candidates(app_key, app_secret, user_token, max_items=100)
                     continue
                 
                 feed_json = res.json()
-                code = feed_json.get("code")
-                if code is not None and str(code) != "0":
+                if str(feed_json.get("code", "0")) != "0":
                     continue
 
                 result_data = feed_json.get("result", {}) or feed_json.get("data", {})
@@ -112,12 +142,13 @@ def fetch_lazada_feed_candidates(app_key, app_secret, user_token, max_items=100)
                             "discountPrice": prod.get("discountPrice"),
                             "price": prod.get("price") or prod.get("originalPrice"),
                             "outOfStock": prod.get("outOfStock"),
+                            "categoryL1": cat_id,
                             "desc": f"Promosi khas {p_name} di Lazada."
                         })
                         if len(candidates) >= max_items:
                             break
             except Exception as e:
-                print(f"⚠️ [FEED WARN] Gagal menarik feed (offerType={offer_type}, page={page}): {e}")
+                print(f"⚠️ [FEED WARN] Gagal menarik feed (Category={cat_id}, Page={page}): {e}")
                 continue
 
     return candidates
@@ -127,7 +158,7 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
     domain = "api.lazada.com.my"
     base_url = f"https://{domain}/rest"
     
-    # 1. Cuba /marketing/product/link
+    # 1. /marketing/product/link
     link_path = "/marketing/product/link"
     link_url = f"{base_url}{link_path}"
     timestamp = str(int(time.time() * 1000))
@@ -145,7 +176,7 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
         res = requests.get(link_url, params=link_params, timeout=25)
         if res.status_code == 200:
             link_json = res.json()
-            if link_json.get("code") is None or str(link_json.get("code")) == "0":
+            if str(link_json.get("code", "0")) == "0":
                 res_obj = link_json.get("result", {})
                 if isinstance(res_obj, dict):
                     data_obj = res_obj.get("data", {})
@@ -158,7 +189,7 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
     except Exception:
         pass
 
-    # 2. Fallback ke /marketing/getlink
+    # 2. Fallback /marketing/getlink
     getlink_path = "/marketing/getlink"
     getlink_url = f"{base_url}{getlink_path}"
     timestamp_gl = str(int(time.time() * 1000))
@@ -169,7 +200,8 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
         "sign_method": "sha256",
         "userToken": str(user_token).strip(),
         "inputType": "productId",
-        "inputValue": str(product_id)
+        "inputValue": str(product_id),
+        "subId1": "telegram_channel"
     }
     getlink_params["sign"] = sign_lazada(getlink_path, getlink_params, app_secret)
 
@@ -177,7 +209,7 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
         res_gl = requests.get(getlink_url, params=getlink_params, timeout=25)
         if res_gl.status_code == 200:
             gl_json = res_gl.json()
-            if gl_json.get("code") is None or str(gl_json.get("code")) == "0":
+            if str(gl_json.get("code", "0")) == "0":
                 res_obj = gl_json.get("result", {})
                 if isinstance(res_obj, dict):
                     data_obj = res_obj.get("data", {})
@@ -190,47 +222,38 @@ def generate_tracking_link(app_key, app_secret, user_token, product_id):
 
     return ""
 
-def parse_and_normalize_price(raw_val):
+def evaluate_product(prod):
     """
-    Menukarkan nilai harga ke format float dan menormalkan unit sen daripada Lazada API.
-    Contoh: 20028.0 dibahagikan dengan 100 menjadi RM 200.28.
-    """
-    if raw_val is None:
-        return None
-    try:
-        v = float(raw_val)
-        # Tapis harga acuan dummy / out of stock penjual (> RM 100,000)
-        if v <= 0 or v >= 100000.0:
-            return None
-        # Auto-normalisasi jika harga dipulangkan dalam unit sen (misalnya 20028.0 -> 200.28)
-        if v > 1000.0 and (v / 100.0) <= 1000.0:
-            v = v / 100.0
-        return v
-    except (ValueError, TypeError):
-        return None
-
-def evaluate_price(prod):
-    """
-    Menilai harga produk berdasarkan julat munasabah RM 2.00 hingga RM 1000.00.
-    Mengendalikan semakan outOfStock dan keutamaan: discountPrice -> price / originalPrice.
+    Menilai kelayakan produk mengikut:
+    1. Status outOfStock
+    2. Semakan Kata Kunci Disekat (Non-Halal, GWP, dll.)
+    3. Julat Harga Idaman RM 10.00 - RM 1000.00
     """
     if prod.get("outOfStock") is True or str(prod.get("outOfStock")).lower() == "true":
         return False, 0.0, "Habis Stok (outOfStock)"
 
-    disc_price = parse_and_normalize_price(prod.get("discountPrice"))
-    reg_price = parse_and_normalize_price(prod.get("price"))
+    # 1. Semak kata kunci disekat
+    is_blacklisted, kw = is_title_blacklisted(prod.get("title"))
+    if is_blacklisted:
+        return False, 0.0, f"Ditolak Kata Kunci Disekat ('{kw}')"
 
-    # 1. Semak harga diskaun yang sudah dinormalkan
-    if disc_price is not None and 2.0 <= disc_price <= 1000.0:
-        return True, disc_price, "Diskaun"
+    # 2. Semak Harga Mentah (Ringgit Malaysia)
+    raw_p = prod.get("discountPrice") if prod.get("discountPrice") is not None else prod.get("price")
+    price_val = 0.0
+    try:
+        price_val = float(raw_p or 0.0)
+    except (ValueError, TypeError):
+        return False, 0.0, "Format Harga Tidak Sah"
 
-    # 2. Semak harga asal jika diskaun tiada atau di luar julat
-    if reg_price is not None and 2.0 <= reg_price <= 1000.0:
-        return True, reg_price, "Harga Asal"
+    # Tapis harga dummy penjual (> RM 10,000)
+    if price_val >= 10000.0:
+        return False, price_val, "Harga Dummy/Out of Stock (> RM 10,000)"
 
-    active_p = disc_price if disc_price is not None else reg_price
-    display_p = active_p if active_p is not None else 0.0
-    return False, display_p, "Luar Julat RM2-RM1000"
+    # Julat Standard RM 10.00 - RM 1000.00
+    if 10.0 <= price_val <= 1000.0:
+        return True, price_val, "Harga Lulus"
+
+    return False, price_val, "Luar Julat RM10-RM1000"
 
 def main():
     print("\n==================================================")
@@ -267,21 +290,21 @@ def main():
         print(f"🔴 [RALAT KRITIKAL]: Kunci persekitaran tidak lengkap di .env.local: {missing_keys}")
         sys.exit(1)
 
-    # 2. Tarik Senarai 100 Produk Dari Lazada API Feed
-    print("\n1️⃣ Meminta sehingga 100 calon produk dari Lazada API Feed...")
-    candidates = fetch_lazada_feed_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, max_items=100)
+    # 2. Tarik Calon Produk Daripada Kategori Sasaran Kekeluargaan
+    print("\n1️⃣ Meminta calon produk dari Kategori Dapur, Bayi, Wanita & Rumah...")
+    candidates = fetch_targeted_lazada_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, max_items=100)
 
     if not candidates:
-        print("🔴 [RALAT KRITIKAL]: Lazada Feed API memulangkan 0 produk merentasi semua offerType & halaman.")
+        print("🔴 [RALAT KRITIKAL]: Lazada Feed API memulangkan 0 produk merentasi kategori sasaran.")
         sys.exit(1)
 
     print(f"🟢 [FEED OK]: Berjaya menarik {len(candidates)} calon produk untuk dinilai.")
 
-    # Rawakkan calon produk supaya posting tidak sentiasa mengikut turutan asal
+    # Rawakkan senarai calon produk
     random.shuffle(candidates)
 
     stats = {
-        "skipped_price": 0,
+        "skipped_guardrails": 0,
         "skipped_redis": 0,
         "skipped_vector": 0,
         "skipped_link": 0,
@@ -294,17 +317,17 @@ def main():
     ai_caption = ""
 
     # 3. Gelung Iterasi & Penapisan 3 Lapisan
-    print("\n2️⃣ Memulakan Gelung Semakan 3 Lapisan (Harga -> Redis -> Vector DB)...")
+    print("\n2️⃣ Memulakan Gelung Semakan 3 Lapisan (Guardrails -> Redis -> Vector DB)...")
     for prod in candidates:
         stats["total_evaluated"] += 1
         p_id = prod["id"]
         p_title = prod["title"]
 
-        # LAPISAN 1: Semakan Harga & Normalisasi (RM 2.00 - RM 1000.00)
-        is_price_valid, active_price, price_type = evaluate_price(prod)
-        if not is_price_valid:
-            stats["skipped_price"] += 1
-            print(f"  ⏩ [PRICE FILTER] #{stats['total_evaluated']} ID {p_id}: RM {active_price:.2f} ({price_type}). Langkau.")
+        # LAPISAN 1: Semakan Guardrails (Harga RM10-RM1000, Non-Halal, GWP Check)
+        is_valid, active_price, reason = evaluate_product(prod)
+        if not is_valid:
+            stats["skipped_guardrails"] += 1
+            print(f"  ⏩ [GUARDRAIL FILTER] #{stats['total_evaluated']} ID {p_id}: RM {active_price:.2f} ({reason}). Langkau.")
             continue
 
         # LAPISAN 2: Semakan Upstash Redis (Duplikasi Produk Tepat 7 Hari)
@@ -322,7 +345,7 @@ def main():
                 continue
 
         # Penjanaan Tracking Link Sebenar
-        print(f"\n  🎯 [LULUS TAPISAN] #{stats['total_evaluated']} ID {p_id} ('{p_title[:35]}...') Harga Dinormalkan: RM {active_price:.2f}")
+        print(f"\n  🎯 [LULUS TAPISAN] #{stats['total_evaluated']} ID {p_id} ('{p_title[:40]}...') Harga: RM {active_price:.2f}")
         print("  🔗 Menjana Affiliate Tracking Link...")
         aff_link = generate_tracking_link(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, p_id)
 
@@ -349,15 +372,15 @@ def main():
     # 4. Semakan Jika Tiada Produk Lulus
     if not selected_product:
         print("\n==================================================")
-        print("🔴 [RALAT PIPELINE]: Tiada produk lulus dari 100 calon produk!")
+        print("🔴 [RALAT PIPELINE]: Tiada produk lulus dari calon produk!")
         print("==================================================")
         print(f"📊 Laporan Penapisan:")
-        print(f"   • Jumlah Dinilai      : {stats['total_evaluated']}")
-        print(f"   • Ditolak Harga (RM2-1000): {stats['skipped_price']}")
-        print(f"   • Ditolak Redis (7 Hari)  : {stats['skipped_redis']}")
-        print(f"   • Ditolak Vector DB (48h) : {stats['skipped_vector']}")
-        print(f"   • Gagal Link Affiliate    : {stats['skipped_link']}")
-        print(f"   • Gagal AI Caption        : {stats['skipped_ai']}")
+        print(f"   • Jumlah Dinilai         : {stats['total_evaluated']}")
+        print(f"   • Ditolak Guardrails     : {stats['skipped_guardrails']}")
+        print(f"   • Ditolak Redis (7 Hari) : {stats['skipped_redis']}")
+        print(f"   • Ditolak Vector DB (48h): {stats['skipped_vector']}")
+        print(f"   • Gagal Link Affiliate   : {stats['skipped_link']}")
+        print(f"   • Gagal AI Caption       : {stats['skipped_ai']}")
         sys.exit(1)
 
     # 5. Penghantaran ke Telegram Bot
