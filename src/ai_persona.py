@@ -52,7 +52,7 @@ def generate_caption(base_url, model, api_key, product_title, product_desc):
             {"role": "user", "content": prompt_user}
         ],
         "temperature": 0.85,
-        "max_tokens": 1500
+        "max_tokens": 1000
     }
     
     try:
