@@ -71,7 +71,6 @@ def test_fetch_real_lazada_affiliate():
 
     # ==================================================
     # LANGKAH 1: Get Product Feed (/marketing/product/feed)
-    # Menjana carian merentasi offerType 1, 2, dan 3 dengan limit=20
     # ==================================================
     feed_path = "/marketing/product/feed"
     feed_url = f"{base_url}{feed_path}"
@@ -85,10 +84,10 @@ def test_fetch_real_lazada_affiliate():
             "app_key": app_key,
             "timestamp": timestamp,
             "sign_method": "sha256",
-            "offerType": offer_type,  # 1=Regular, 2=MM, 3=DM
+            "offerType": offer_type,
             "userToken": user_token,
             "page": "1",
-            "limit": "20"  # Ditingkatkan ke limit=20
+            "limit": "20"
         }
         feed_params["sign"] = sign_lazada_request(feed_path, feed_params, app_secret)
 
@@ -101,7 +100,6 @@ def test_fetch_real_lazada_affiliate():
                 feed_json = res_feed.json()
             except json.JSONDecodeError:
                 print("🔴 [RALAT FORMAT RESPONS]: Response bukan format JSON.")
-                print(f"📄 Raw Text:\n{res_feed.text}")
                 continue
 
             code = feed_json.get("code")
@@ -111,35 +109,28 @@ def test_fetch_real_lazada_affiliate():
 
             result_data = feed_json.get("result", {}) or feed_json.get("data", {})
             
-            # Semak senarai produk
+            prods = []
             if isinstance(result_data, dict):
                 prods = result_data.get("products", []) or result_data.get("data", []) or result_data.get("items", [])
             elif isinstance(result_data, list):
                 prods = result_data
-            else:
-                prods = []
 
             if prods:
                 print(f"🟢 [FEED SUCCESS] Ditemui {len(prods)} produk di bawah offerType={offer_type}!")
                 found_products = prods
                 selected_offer_type = offer_type
                 break
-            else:
-                print(f"ℹ️ offerType={offer_type} memulangkan 0 produk. Mencuba offerType seterusnya...")
 
         except Exception as e:
             print(f"⚠️ Ralat carian offerType={offer_type}: {e}")
 
-    # Jika Feed API memulangkan 0 produk merentasi semua offerType
     if not found_products:
         print("\n==================================================")
-        print("🔴 [RALAT DATA KOSONG]: Product Feed memulangkan 0 produk untuk offerType 1, 2, dan 3.")
+        print("🔴 [RALAT DATA KOSONG]: Product Feed memulangkan 0 produk.")
         print("==================================================")
         raise Exception("Tiada data produk ditemui di dalam response Product Feed API bagi akaun ini.")
 
-    # Pilih produk pertama yang lengkap dengan Product ID & Gambar
     target_product = None
-    real_image = ""
 
     for prod in found_products:
         p_id = prod.get("productId") or prod.get("product_id") or prod.get("id")
@@ -161,7 +152,7 @@ def test_fetch_real_lazada_affiliate():
             break
 
     if not target_product:
-        print("\n🔴 [RALAT DATA TAK LENGKAP]: Produk wujud tetapi Product ID atau Gambar adalah kosong.")
+        print("\n🔴 [RALAT DATA TAK LENGKAP]: Product ID atau Gambar adalah kosong.")
         raise ValueError("Gagal mengekstrak Product ID dan URL Gambar yang sah dari Product Feed.")
 
     product_id = target_product["id"]
@@ -174,7 +165,7 @@ def test_fetch_real_lazada_affiliate():
     print(f"   🖼️ Real Image   : {real_image}")
 
     # ==================================================
-    # LANGKAH 2A: Try Get Tracking Link (/marketing/product/link)
+    # LANGKAH 2A: Get Tracking Link (/marketing/product/link)
     # ==================================================
     tracking_link = ""
     
@@ -196,19 +187,22 @@ def test_fetch_real_lazada_affiliate():
         res_link = requests.get(link_url, params=link_params, timeout=25)
         print(f"📊 [HTTP STATUS CODE]: {res_link.status_code}")
         link_json = res_link.json()
-        print("📥 [RAW RESPONSE /marketing/product/link]:")
-        print(json.dumps(link_json, indent=2))
 
         link_code = link_json.get("code")
         if res_link.status_code == 200 and (link_code is None or str(link_code) == "0"):
-            link_result = link_json.get("result", {}) or link_json.get("data", {})
-            tracking_link = link_result.get("trackingLink") or link_json.get("trackingLink") or ""
+            # Pembacaan struktur JSON tepat: result -> data -> trackingLink
+            res_obj = link_json.get("result", {})
+            if isinstance(res_obj, dict):
+                data_obj = res_obj.get("data", {})
+                if isinstance(data_obj, dict):
+                    tracking_link = data_obj.get("trackingLink") or data_obj.get("link") or ""
+            if not tracking_link:
+                tracking_link = link_json.get("trackingLink", "")
     except Exception as err2a:
         print(f"⚠️ Method 2A gagal: {err2a}")
 
     # ==================================================
     # LANGKAH 2B: Fallback ke Batch Get Link (/marketing/getlink)
-    # Sekiranya Method 2A tidak memulangkan trackingLink
     # ==================================================
     if not tracking_link:
         print("\n2️⃣B [STEP 2B] Mencuba Batch Get Link API (/marketing/getlink)...")
@@ -230,20 +224,22 @@ def test_fetch_real_lazada_affiliate():
             res_gl = requests.get(getlink_url, params=getlink_params, timeout=25)
             print(f"📊 [HTTP STATUS CODE]: {res_gl.status_code}")
             gl_json = res_gl.json()
-            print("📥 [RAW RESPONSE /marketing/getlink]:")
-            print(json.dumps(gl_json, indent=2))
 
             gl_code = gl_json.get("code")
             if res_gl.status_code == 200 and (gl_code is None or str(gl_code) == "0"):
-                data_obj = gl_json.get("data", {}) or gl_json.get("result", {})
-                info_list = data_obj.get("productBatchGetLinkInfoList", [])
-                if info_list:
-                    item_info = info_list[0]
-                    tracking_link = item_info.get("regularPromotionLink") or item_info.get("promotionLink") or ""
+                # Pembacaan struktur JSON tepat: result -> data -> productBatchGetLinkInfoList
+                res_obj = gl_json.get("result", {})
+                if isinstance(res_obj, dict):
+                    data_obj = res_obj.get("data", {})
+                    if isinstance(data_obj, dict):
+                        info_list = data_obj.get("productBatchGetLinkInfoList", [])
+                        if info_list and isinstance(info_list, list):
+                            item_info = info_list[0]
+                            tracking_link = item_info.get("regularPromotionLink") or item_info.get("promotionLink") or ""
         except Exception as err2b:
             print(f"⚠️ Method 2B gagal: {err2b}")
 
-    # Semakan Akhir Pautan & Gambar (TIDAK DIBENARKAN DUMMY)
+    # Semakan Akhir (NO DUMMY ALLOWED)
     if not tracking_link or not real_image:
         print("\n==================================================")
         print("🔴 [RALAT KRITIKAL]: Tracking Link atau Image URL adalah Kosong / NULL!")
