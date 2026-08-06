@@ -2,13 +2,14 @@ name: Social Affiliate AI Pipeline Scheduler
 
 on:
   schedule:
-    # Berjalan secara automatik setiap 2 jam (Minut 0, Setiap 2 Jam)
+    # Berjalan secara automatik setiap 2 jam
     - cron: '0 */2 * * *'
-  workflow_dispatch: # Membolehkan pemicu butang "Run workflow" secara manual di GitHub UI
+  workflow_dispatch: # Pemicu butang "Run workflow" secara manual di GitHub UI
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+    timeout-minutes: 5 # MEMAKSA BTH CANCEL JIKA MELEBIHI 5 MINIT (ELAK SEKATAN)
 
     steps:
       - name: Checkout Repository
@@ -18,15 +19,17 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
       - name: Execute Pipeline Engine
         env:
+          # Memaksa Python memaparkan log secara real-time terus ke paparan skrin
+          PYTHONUNBUFFERED: "1"
+
           # Kunci Persekitaran Telegram
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
