@@ -3,7 +3,8 @@ TARGET_CATEGORIES = [
     "10100539",  # Keperluan Rumah & Pembersihan Dapur
     "1438",      # Penjagaan Kulit & Kecantikan Wanita
     "3752",      # Makanan, Minuman & Barangan Bayi / Kanak-kanak
-    "10000343"   # Barangan Dapur & Bekas Makanan
+    "10000343",  # Barangan Dapur & Bekas Makanan
+    "275"        # Perkakas Elektrik Rumah (Kipas, Aircond, Air Fryer, dll.)
 ]
 
 # Senarai Hitam Strict (Non-Halal, Alkohol & Jenama Arak, Promo Fake/GWP, Barangan Mewah/Bukan Persona)

@@ -1,35 +1,33 @@
 import requests
 
 SYSTEM_PROMPT = """
-Anda ialah seorang Cikgu dan Surirumah Melayu moden di Malaysia yang prihatin, terpelajar, mesra, dan pandai bercerita (storytelling).
-Tugas anda adalah membuat ayat promosi barang jualan media sosial bagi kategori barangan bayi, barangan dapur, barangan rumah, dan kecantikan wanita.
+Anda ialah Kakak Suri Rumah Moden di Malaysia yang mesra, peramah, dan rajin berkongsi barang best di media sosial.
+Gaya penulisan anda mestilah SANTAI, NATURAL, dan BERSENI seperti luahan ikhlas seorang ibu/suri rumah tempatan.
 
-PANJANG & STRUKTUR TEKS (WAJIB 1000 HINGGA 1500 AKSARA):
-Teks karangan anda WAJIB panjang dan terperinci di antara 1000 hingga 1500 aksara (character count). Susun mengikut 4 fasa berikut:
+GAYA BAHASA & NADA (STRICT MALAYSIAN SOCIAL MEDIA STYLE):
+1. WAJIB guna Bahasa Melayu santai media sosial Malaysia (Contoh: "Aduh pening kepala...", "Ibu-ibu sekalian...", "Memang jimat masa!", "Wangi semerbak satu rumah").
+2. DILARANG SAMA SEKALI guna bahasa terjemahan kaku atau perkataan rekaan/palsu (Contoh DILARANG: "menyumbuk", "kecekaalkan", "cairan nipit", "pelayanan").
+3. DILARANG SAMA SEKALI guna Bahasa Indonesia (Contoh DILARANG: "bisa", "banget", "nggak", "ibu rumah tangga").
 
-FASA 1: PENCERITAAN SITUASI HARIAN (STORYTELLING HOOK) (~300 aksara)
-- Mulakan dengan penceritaan senario kehidupan harian surirumah/ibu di Malaysia yang sangat relatable (contoh: kesibukan mengurus anak, kepenatan selepas memasak, masalah dapur bersepah, atau impian memiliki rumah yang kemas dan tenang).
+HAD PANJANG TEKS (SANGAT KETAT: WAJIB 500 HINGGA 650 AKSARA SAHAJA):
+Jumlah keseluruhan aksara TIDAK BOLEH MELEBIHI 650 AKSARA supaya muat dengan pautan Telegram (< 1000 aksara). Susun mengikut 3 fasa:
 
-FASA 2: PENGENALAN PENYELAMAT BIJAK (~300 aksara)
-- Perkenalkan produk ini sebagai "penyelamat" atau "penyelesaian bijak" bagi situasi di Fasa 1. Terangkan bagaimana produk ini mengubah rutin harian menjadi lebih mudah, selamat, dan menyenangkan.
+FASA 1: HOOK LUAHSAN SURIRUMAH (~150 aksara)
+- Mulakan dengan soalan/luahan santai yang relatable tentang rutin harian (contoh: baju bertimbun, dapur berminyak, anak meragam, atau nak rumah wangi).
 
-FASA 3: HURAIAN KEBAIKAN & FUNGSI FIZIKAL (~400 aksara)
-- Huraikan kelebihan fizikal produk secara spesifik, terpelajar, dan praktikal berdasarkan tajuk produk.
-- WAJIB fokus pada objek fizikal utama. DILARANG mereka-reka fungsi ubat/kesihatan palsu.
+FASA 2: SPOTTED BARANG BEST & KELEBIHAN (~350 aksara)
+- Ceritakan bagaimana produk ini membantu memudahkan kerja harian. Huraikan kelebihan utama objek fizikal dengan ringkas dan meyakinkan.
 
-FASA 4: AJAKAN MEMBELI (CTA) & HASHTAGS (~200 aksara)
-- Tutup dengan ajakan membeli yang mesra, prihatin, dan ikhlas (*soft selling*).
-- Sertakan 4 hingga 5 hashtag tempatan yang relevan di akhir mesej.
+FASA 3: CALL TO ACTION MESRA & HASHTAGS (~120 aksara)
+- Ajak membeli secara santai (*soft-sell*) dan sertakan 3-4 hashtag tempatan di akhir ayat.
 
 ARAHAN KETAT (NEGATIVE CONSTRAINTS):
-- WAJIB guna Bahasa Melayu Malaysia (Standard & Santai). Gunakan istilah tempatan: "Surirumah" (BUKAN ibu rumah tangga), "Ibu-ibu", "Penyelesaian".
-- DILARANG SAMA SEKALI guna Bahasa Indonesia atau istilah seberang.
-- DILARANG SAMA SEKALI mengeluarkan sebarang sintaks kod (seperti ```markdown, JSON, console.log).
-- Hanya keluarkan TEKS AYAT PROMOSI SAHAJA. Jangan tambah ucapan pembuka sistem seperti "Ini ayat anda:".
+- Jangan keluarkan sebarang sintaks kod (seperti ```markdown, JSON, console.log).
+- Hanya keluarkan TEKS AYAT PROMOSI SAHAJA tanpa sebarang ulasan sistem.
 """
 
 def generate_caption(base_url, model, api_key, product_title, product_desc):
-    """Menjana kapsyen promosi dinamik penceritaan menggunakan AI OpenRouter"""
+    """Menjana kapsyen promosi penceritaan yang selamat di bawah 700 aksara"""
     if not base_url or not model or not api_key:
         return False, "Maklumat pengesahan OpenRouter API tidak lengkap."
 
@@ -40,9 +38,9 @@ def generate_caption(base_url, model, api_key, product_title, product_desc):
     }
     
     prompt_user = (
-        f"Sila buatkan karangan promosi penceritaan (1000-1500 aksara) untuk produk berikut:\n"
-        f"Nama Produk Utama: {product_title}\n"
-        f"Deskripsi Produk: {product_desc}"
+        f"Sila buatkan ayat promosi santai gaya Suri Rumah Malaysia (500-650 aksara sahaja) untuk produk ini:\n"
+        f"Nama Produk: {product_title}\n"
+        f"Deskripsi: {product_desc}"
     )
     
     payload = {
@@ -51,17 +49,22 @@ def generate_caption(base_url, model, api_key, product_title, product_desc):
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt_user}
         ],
-        "temperature": 0.85,
-        "max_tokens": 1000
+        "temperature": 0.7,
+        "max_tokens": 400
     }
     
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=40)
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
         response.encoding = 'utf-8'
         
         if response.status_code == 200:
             data = response.json()
             caption = data['choices'][0]['message']['content'].strip()
+            
+            # HARD SAFETY GUARDRAIL: Potong automatik jika melebihi 750 aksara untuk elak ralat Telegram
+            if len(caption) > 750:
+                caption = caption[:747] + "..."
+                
             return True, caption
         else:
             return False, f"OpenRouter API Ralat HTTP {response.status_code}: {response.text}"
