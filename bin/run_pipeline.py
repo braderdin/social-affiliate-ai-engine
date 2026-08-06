@@ -13,6 +13,7 @@ from src.redis_db import is_product_posted, mark_product_posted
 from src.vector_db import is_similar_product_posted, mark_vector_posted
 from src.ai_persona import generate_caption
 from src.telegram_bot import send_photo_to_telegram
+from src.facebook_bot import send_to_facebook_page
 
 # Muat turun pemboleh ubah persekitaran (.env.local)
 load_dotenv('.env.local')
@@ -27,12 +28,26 @@ def sanitize_value(val):
 
 def main():
     print("\n==================================================")
-    print("🚀 [FULL PIPELINE] Automasi Produk Real, Guardrails & Telegram")
+    print("🚀 [FULL PIPELINE] Automasi Produk Real, Guardrails, Telegram & Facebook")
     print("==================================================")
 
     # 1. Pembacaan Pemboleh Ubah Persekitaran
+    ENABLE_TELEGRAM = sanitize_value(os.getenv("ENABLE_TELEGRAM", "true")).lower() == "true"
+    ENABLE_FACEBOOK = sanitize_value(os.getenv("ENABLE_FACEBOOK", "false")).lower() == "true"
+
     TELEGRAM_BOT_TOKEN = sanitize_value(os.getenv("TELEGRAM_BOT_TOKEN"))
     TELEGRAM_CHAT_ID = sanitize_value(os.getenv("TELEGRAM_CHAT_ID"))
+
+    FACEBOOK_PAGE_ID = sanitize_value(
+        os.getenv("FACEBOOK_PAGE_ID") or 
+        os.getenv("FB_PAGE_ID") or 
+        os.getenv("META_PAGE_ID")
+    )
+    FB_PAGE_ACCESS_TOKEN = sanitize_value(
+        os.getenv("FB_PAGE_ACCESS_TOKEN") or 
+        os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN") or 
+        os.getenv("META_PAGE_ACCESS_TOKEN")
+    )
 
     OPENROUTER_BASE_URL = sanitize_value(os.getenv("OPENROUTER_BASE_URL"))
     OPENROUTER_MODEL = sanitize_value(os.getenv("OPENROUTER_MODEL"))
@@ -50,18 +65,20 @@ def main():
 
     # Validasi Kunci Asas
     missing_keys = []
-    if not LAZADA_APP_KEY: missing_keys.append("LAZADA_LiteApp_Key / LAZADA_APP_KEY")
-    if not LAZADA_APP_SECRET: missing_keys.append("LAZADA_LiteApp_Secret / LAZADA_APP_SECRET")
+    if not LAZADA_APP_KEY: missing_keys.append("LAZADA_APP_KEY")
+    if not LAZADA_APP_SECRET: missing_keys.append("LAZADA_APP_SECRET")
     if not LAZADA_USER_TOKEN: missing_keys.append("LAZADA_USER_TOKEN")
-    if not TELEGRAM_BOT_TOKEN: missing_keys.append("TELEGRAM_BOT_TOKEN")
-    if not TELEGRAM_CHAT_ID: missing_keys.append("TELEGRAM_CHAT_ID")
+    if ENABLE_TELEGRAM and not TELEGRAM_BOT_TOKEN: missing_keys.append("TELEGRAM_BOT_TOKEN")
+    if ENABLE_FACEBOOK and not FB_PAGE_ACCESS_TOKEN: missing_keys.append("FB_PAGE_ACCESS_TOKEN")
 
     if missing_keys:
-        print(f"🔴 [RALAT KRITIKAL]: Kunci persekitaran tidak lengkap di .env.local: {missing_keys}")
+        print(f"🔴 [RALAT KRITIKAL]: Kunci persekitaran tidak lengkap: {missing_keys}")
         sys.exit(1)
 
-    # 2. Tarik Calon Produk Daripada Kategori Sasaran Kekeluargaan
-    print("\n1️⃣ Meminta calon produk dari Kategori Dapur, Bayi, Wanita & Rumah...")
+    print(f"📌 [STATUS CHANNELS]: Telegram = {'🟢 AKTIF' if ENABLE_TELEGRAM else '⚪ NYAHAFTIF'} | Facebook = {'🟢 AKTIF' if ENABLE_FACEBOOK else '⚪ NYAHAFTIF'}")
+
+    # 2. Tarik Calon Produk Daripada Kategori Sasaran
+    print("\n1️⃣ Meminta calon produk dari Kategori Dapur, Bayi, Wanita, Rumah & Elektrik...")
     candidates = fetch_targeted_lazada_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, max_items=100)
 
     if not candidates:
@@ -70,7 +87,6 @@ def main():
 
     print(f"🟢 [FEED OK]: Berjaya menarik {len(candidates)} calon produk untuk dinilai.")
 
-    # Rawakkan senarai calon produk
     random.shuffle(candidates)
 
     stats = {
@@ -93,7 +109,7 @@ def main():
         p_id = prod["id"]
         p_title = prod["title"]
 
-        # LAPISAN 1: Semakan Guardrails (Harga RM10-RM1000, Non-Halal, GWP Check)
+        # LAPISAN 1: Semakan Guardrails (Harga RM10-RM500, Non-Halal, GWP Check)
         is_valid, active_price, reason = evaluate_product(prod)
         if not is_valid:
             stats["skipped_guardrails"] += 1
@@ -133,56 +149,67 @@ def main():
             print(f"  ⚠️ Gagal menjana AI Caption: {caption}. Mencuba produk seterusnya...")
             continue
 
-        # Jika semua langkah lulus
         selected_product = prod
         affiliate_link = aff_link
         ai_caption = caption
         break
 
-    # 4. Semakan Jika Tiada Produk Lulus
     if not selected_product:
-        print("\n==================================================")
-        print("🔴 [RALAT PIPELINE]: Tiada produk lulus dari calon produk!")
-        print("==================================================")
-        print(f"📊 Laporan Penapisan:")
-        print(f"   • Jumlah Dinilai         : {stats['total_evaluated']}")
-        print(f"   • Ditolak Guardrails     : {stats['skipped_guardrails']}")
-        print(f"   • Ditolak Redis (7 Hari) : {stats['skipped_redis']}")
-        print(f"   • Ditolak Vector DB (48h): {stats['skipped_vector']}")
-        print(f"   • Gagal Link Affiliate   : {stats['skipped_link']}")
-        print(f"   • Gagal AI Caption       : {stats['skipped_ai']}")
+        print("\n🔴 [RALAT PIPELINE]: Tiada produk lulus dari calon produk!")
         sys.exit(1)
 
-    # 5. Penghantaran ke Telegram Bot
-    print("\n3️⃣ Menghantar Gambar + Caption + Link ke Telegram...")
-    tg_ok, tg_res = send_photo_to_telegram(
-        TELEGRAM_BOT_TOKEN,
-        TELEGRAM_CHAT_ID,
-        ai_caption,
-        selected_product["image"],
-        affiliate_link
-    )
+    posted_successfully = False
 
-    if tg_ok:
-        print("\n==================================================")
-        print("🟢 [SUCCESS 100%] PRODUK SEBENAR BERJAYA DIPOS KE TELEGRAM!")
-        print("==================================================")
-        print(f"📌 Product ID     : {selected_product['id']}")
-        print(f"📌 Tajuk Produk   : {selected_product['title']}")
-        print(f"🖼️ URL Gambar     : {selected_product['image']}")
-        print(f"🔗 Link Affiliate : {affiliate_link}")
-        print("==================================================\n")
+    # 4. Penghantaran ke Telegram Bot
+    if ENABLE_TELEGRAM:
+        print("\n3️⃣ Menghantar Gambar + Caption + Link ke Telegram...")
+        tg_ok, tg_res = send_photo_to_telegram(
+            TELEGRAM_BOT_TOKEN,
+            TELEGRAM_CHAT_ID,
+            ai_caption,
+            selected_product["image"],
+            affiliate_link
+        )
+        if tg_ok:
+            print("🟢 [TELEGRAM SUCCESS] Produk berjaya dipos ke Telegram!")
+            posted_successfully = True
+        else:
+            print(f"🔴 [TELEGRAM FAIL]: {tg_res}")
+    else:
+        print("\n3️⃣ [SKIP TELEGRAM] Suis ENABLE_TELEGRAM=false.")
 
-        # 6. Rekod Kunci Baharu ke Redis & Vector DB
+    # 5. Penghantaran ke Facebook Page
+    if ENABLE_FACEBOOK:
+        print("\n4️⃣ Menghantar Gambar + Caption + Komen Affiliate ke Facebook Page...")
+        fb_ok, fb_res = send_to_facebook_page(
+            FACEBOOK_PAGE_ID,
+            FB_PAGE_ACCESS_TOKEN,
+            ai_caption,
+            selected_product["image"],
+            affiliate_link
+        )
+        if fb_ok:
+            print(f"🟢 [FACEBOOK SUCCESS] Produk berjaya dipos ke Facebook Page!")
+            print(f"   📌 Post ID    : {fb_res.get('post_id')}")
+            print(f"   📌 Comment ID : {fb_res.get('comment_id')}")
+            posted_successfully = True
+        else:
+            print(f"🔴 [FACEBOOK FAIL]: {fb_res}")
+    else:
+        print("\n4️⃣ [SKIP FACEBOOK] Suis ENABLE_FACEBOOK=false.")
+
+    # 6. Rekod Kunci Baharu ke Redis & Vector DB jika sekurang-kurangnya 1 saluran berjaya
+    if posted_successfully:
+        print("\n5️⃣ Merekodkan Produk ke Upstash Redis & Vector DB...")
         if UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
             mark_product_posted(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, selected_product["id"], selected_product["title"])
 
         if UPSTASH_VECTOR_REST_URL and UPSTASH_VECTOR_REST_TOKEN:
             mark_vector_posted(UPSTASH_VECTOR_REST_URL, UPSTASH_VECTOR_REST_TOKEN, selected_product["id"], selected_product["title"])
 
-    else:
-        print(f"\n🔴 [TELEGRAM FAIL]: Gagal menghantar ke Telegram: {tg_res}")
-        sys.exit(1)
+        print("\n==================================================")
+        print("🟢 [PIPELINE COMPLETED 100%] PROSES AUTOMASI SELESAI!")
+        print("==================================================\n")
 
 if __name__ == "__main__":
     try:
