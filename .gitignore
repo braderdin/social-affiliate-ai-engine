@@ -156,6 +156,13 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.env.local
+.dev.vars
+.env.example
+.clinerules
+
+
+
 
 # Spyder project settings
 .spyderproject
