@@ -79,7 +79,7 @@ def main():
 
     # 2. Tarik Calon Produk Daripada Kategori Sasaran
     print("\n1️⃣ Meminta calon produk dari Kategori Dapur, Bayi, Wanita, Rumah & Elektrik...")
-    candidates = fetch_targeted_lazada_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, max_items=100)
+    candidates = fetch_targeted_lazada_candidates(LAZADA_APP_KEY, LAZADA_APP_SECRET, LAZADA_USER_TOKEN, max_items=200)
 
     if not candidates:
         print("🔴 [RALAT KRITIKAL]: Lazada Feed API memulangkan 0 produk merentasi kategori sasaran.")
