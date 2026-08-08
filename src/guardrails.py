@@ -16,7 +16,7 @@ TARGET_CATEGORIES = [
 # Senarai Hitam Strict (Non-Halal, Alkohol & Jenama Arak, Promo Fake/GWP, Barangan Mewah/Bukan Persona)
 BLACKLIST_KEYWORDS = [
     # Non-Halal / Alkohol / Babi / Jenama Arak Utama & Tambahan
-    "whisky", "whiskey", "liquor", "wine", "vodka", "alcohol", "beer", "rum",
+    "whisky", "whiskey", "liquor", "wine", "vodka", "alcohol", "beer", "rum", "royal salute",
     "pork", "lard", "bacon", "ham", "non-halal", "non halal", "tokek", "arak",
     "martell", "cognac", "brandy", "xo", "hennessy", "chivas", "johnnie", "walker",
     "smirnoff", "heineken", "tiger", "carlsberg", "guinness", "somersby", "asahi",
