@@ -1,0 +1,74 @@
+name: Lazada Automation Tests (Fetch vs Puppeteer vs Playwright)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 🟢 Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install playwright pytest
+
+      - name: 📦 Install Node.js Dependencies (Puppeteer)
+        run: |
+          npm install puppeteer dotenv
+
+      - name: 🌐 Install Playwright Browsers & OS Dependencies
+        run: |
+          npx playwright install chromium --with-deps
+
+      - name: 🧪 [TEST 1] Run Fetch / Direct API Test
+        continue-on-error: true
+        env:
+          LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
+          LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET }}
+          LAZADA_USER_TOKEN: ${{ secrets.LAZADA_USER_TOKEN }}
+          LAZADA_MEMBER_ID: ${{ secrets.LAZADA_MEMBER_ID }}
+          LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
+          LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
+        run: |
+          python tests_runner/test_lazada_fetch.py
+
+      - name: 🧪 [TEST 2] Run Puppeteer Automation Test
+        continue-on-error: true
+        env:
+          LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
+          LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET }}
+          LAZADA_USER_TOKEN: ${{ secrets.LAZADA_USER_TOKEN }}
+          LAZADA_MEMBER_ID: ${{ secrets.LAZADA_MEMBER_ID }}
+          LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
+          LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
+        run: |
+          node tests_runner/test_lazada_puppeteer.js
+
+      - name: 🧪 [TEST 3] Run Playwright Automation Test
+        continue-on-error: true
+        env:
+          LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
+          LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET }}
+          LAZADA_USER_TOKEN: ${{ secrets.LAZADA_USER_TOKEN }}
+          LAZADA_MEMBER_ID: ${{ secrets.LAZADA_MEMBER_ID }}
+          LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
+          LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
+        run: |
+          python tests_runner/test_lazada_playwright.py
