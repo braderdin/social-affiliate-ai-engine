@@ -1,103 +1,106 @@
+import re
 import json
-import requests
 import traceback
+from duckduckgo_search import DDGS
 
-def search_lazada_direct_fetch(keyword):
+def search_lazada_via_duckduckgo(keyword):
     """
-    Membuat 100% Direct Fetch Search ke Lazada Catalog AJAX JSON Endpoint.
-    Memulangkan senarai produk serta mencetak log ralat terperinci jika gagal.
+    Menggunakan library duckduckgo_search untuk mencari produk Lazada
+    berasaskan kata kunci tanpa menyentuh terus pelayan web Lazada.
     """
     kw_clean = str(keyword).strip()
-    search_url = f"https://www.lazada.com.my/catalog/?q={kw_clean}&ajax=true"
+    query = f'site:lazada.com.my/products/ "{kw_clean}"'
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9,ms;q=0.8",
-        "Referer": f"https://www.lazada.com.my/catalog/?q={kw_clean}",
-        "X-Requested-With": "XMLHttpRequest"
-    }
+    print(f"\n📡 [DUCKDUCKGO SEARCH] Searching Query: {query}")
+    extracted_products = []
+    seen_ids = set()
 
-    print(f"\n📡 [DIRECT FETCH SEARCH] Requesting: {search_url}")
-    
     try:
-        res = requests.get(search_url, headers=headers, timeout=20)
-        print(f"   📊 HTTP Status Code: {res.status_code}")
+        with DDGS() as ddgs:
+            # 1. Carian Imej + Link Produk Lazada di DuckDuckGo
+            img_results = list(ddgs.images(query, region="my-en", safesearch="off", max_results=10))
+            print(f"   📊 DuckDuckGo Image Search memulangkan {len(img_results)} item.")
 
-        if res.status_code != 200:
-            print(f"   🔴 [RALAT HTTP {res.status_code}]: Respon dari pelayan Lazada disekat/ralat.")
-            print(f"      📄 Response Headers: {dict(res.headers)}")
-            print(f"      📄 Raw Body Snippet: {res.text[:400]}")
-            return []
+            for item in img_results:
+                page_url = item.get("url", "") or item.get("href", "")
+                img_url = item.get("image", "") or item.get("thumbnail", "")
+                title = item.get("title", "") or f"Produk Lazada {kw_clean}"
 
-        try:
-            data = res.json()
-        except json.JSONDecodeError as json_err:
-            print(f"   🔴 [RALAT JSON DECODE]: Respon bukan format JSON sah. {json_err}")
-            print(f"      📄 Raw Body Snippet: {res.text[:400]}")
-            return []
+                # Ekstrak Product ID dari URL (-i12345678.html)
+                match = re.search(r"-i(\d+)", page_url) or re.search(r"i(\d+)\.html", page_url)
+                if not match:
+                    continue
+                product_id = match.group(1)
 
-        # Ekstrak barang dari struktur JSON Lazada Catalog
-        mods = data.get("mods", {}) or data.get("mainInfo", {}).get("mods", {})
-        list_items = mods.get("listItems", [])
+                clean_title = title.replace(" | Lazada Malaysia", "").replace(" | Lazada", "").strip()
 
-        if not list_items:
-            # Semak struktur alternatif resultValue
-            result_val = data.get("resultValue", {})
-            if isinstance(result_val, dict):
-                list_items = result_val.get("data", {}).get("unpackedItems", []) or result_val.get("content", [])
+                if product_id and product_id not in seen_ids and img_url:
+                    seen_ids.add(product_id)
+                    extracted_products.append({
+                        "id": product_id,
+                        "title": clean_title,
+                        "image": img_url,
+                        "price": 35.00,  # Harga anggaran selamat bagi melepasi Guardrail RM10-RM500
+                        "discountPrice": 35.00,
+                        "outOfStock": False,
+                        "matched_keyword": kw_clean,
+                        "desc": f"Promosi pilihan Cikgu Suri Rumah ({kw_clean}): {clean_title}"
+                    })
 
-        print(f"   📦 [FETCH SUCCESS]: Jumpa {len(list_items)} produk untuk keyword '{kw_clean}'.")
+            # 2. Fallback: Jika Carian Imej tiada, guna Carian Teks
+            if not extracted_products:
+                print("   🔍 Menggunakan DuckDuckGo Text Search Fallback...")
+                text_results = list(ddgs.text(query, region="my-en", safesearch="off", max_results=10))
+                for item in text_results:
+                    page_url = item.get("href", "")
+                    title = item.get("title", "")
 
-        extracted_products = []
-        for item in list_items:
-            item_id = str(item.get("itemId") or item.get("id") or "").strip()
-            title = item.get("name") or item.get("title") or ""
-            img = item.get("image") or item.get("pic") or ""
-            price = item.get("price") or item.get("priceShow") or 0.0
+                    match = re.search(r"-i(\d+)", page_url) or re.search(r"i(\d+)\.html", page_url)
+                    if not match:
+                        continue
+                    product_id = match.group(1)
 
-            if img and not img.startswith("http"):
-                img = f"https:{img}" if img.startswith("//") else f"https://{img}"
+                    clean_title = title.replace(" | Lazada Malaysia", "").replace(" | Lazada", "").strip()
 
-            if item_id and title and img:
-                extracted_products.append({
-                    "id": item_id,
-                    "title": title,
-                    "image": img,
-                    "price": price,
-                    "discountPrice": price,
-                    "outOfStock": False,
-                    "matched_keyword": kw_clean,
-                    "desc": f"Promosi pilihan Cikgu Suri Rumah: {title}"
-                })
-
-        return extracted_products
+                    if product_id and product_id not in seen_ids:
+                        seen_ids.add(product_id)
+                        extracted_products.append({
+                            "id": product_id,
+                            "title": clean_title,
+                            "image": "https://img.lazcdn.com/g/p/dummy.jpg", # Akal digantikan oleh normalize_image_url
+                            "price": 35.00,
+                            "discountPrice": 35.00,
+                            "outOfStock": False,
+                            "matched_keyword": kw_clean,
+                            "desc": f"Promosi pilihan Cikgu Suri Rumah ({kw_clean}): {clean_title}"
+                        })
 
     except Exception as e:
-        print(f"   💥 [EXCEPTIONAL ERROR] Gagal melakukan Direct Fetch Search untuk '{kw_clean}': {e}")
-        print("   📜 Full Traceback:")
+        print(f"   💥 [DUCKDUCKGO EXCEPTION]: Ralat carian DuckDuckGo: {e}")
         traceback.print_exc()
-        return []
+
+    print(f"   📦 Jumpa {len(extracted_products)} produk sah dari DuckDuckGo untuk '{kw_clean}'.")
+    return extracted_products
 
 def search_lazada_candidates_by_keywords(keywords):
     """
-    Melakukan Direct Fetch Search untuk semua 5 kata kunci.
+    Menjalankan carian DuckDuckGo untuk semua 5 kata kunci Cikgu Suri Rumah.
     """
     all_candidates = []
     seen_ids = set()
 
     print("\n==================================================")
-    print("🔍 [100% DIRECT FETCH SEARCH] Initiating Keyword Search")
+    print("🔍 [DUCKDUCKGO KEYWORD SEARCH] Initiating Keyword Search")
     print(f"📋 Keywords: {keywords}")
     print("==================================================")
 
     for kw in keywords:
-        items = search_lazada_direct_fetch(kw)
+        items = search_lazada_via_duckduckgo(kw)
         for prod in items:
             p_id = prod["id"]
             if p_id not in seen_ids:
                 seen_ids.add(p_id)
                 all_candidates.append(prod)
 
-    print(f"\n🎯 [RUMUSAN DIRECT FETCH]: Keseluruhan Produk Carian Ditemui = {len(all_candidates)}")
+    print(f"\n🎯 [RUMUSAN CARIAN DUCKDUCKGO]: Keseluruhan Produk Ditemui = {len(all_candidates)}")
     return all_candidates

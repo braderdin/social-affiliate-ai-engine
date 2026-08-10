@@ -30,7 +30,7 @@ def sanitize(val):
 
 def run_pipeline():
     print("==================================================")
-    print("🚀 [PIPELINE V2] Executing 100% Direct Fetch Search Engine")
+    print("🚀 [PIPELINE V2] Executing DuckDuckGo Keyword Search Pipeline")
     print("==================================================")
 
     # 1. Baca Kunci Persekitaran (Zero Hardcoding)
@@ -60,11 +60,11 @@ def run_pipeline():
     # 2. AI Persona Jana 5 Keyword Pendek
     cat_name, keywords = generate_search_keywords(openrouter_url, openrouter_model, openrouter_key)
 
-    # 3. Direct Fetch Search Keyword
+    # 3. DuckDuckGo Search Keyword
     candidates = search_lazada_candidates_by_keywords(keywords)
 
     if not candidates:
-        print("\n🔴 [PIPELINE STOPPED]: Direct Fetch Search tidak memulangkan sebarang produk. Sila semak log ralat di atas.")
+        print("\n🔴 [PIPELINE STOPPED]: DuckDuckGo Search tidak memulangkan sebarang produk.")
         return
 
     selected_product = None
@@ -109,7 +109,7 @@ def run_pipeline():
 
     print(f"\n🟢 [PRODUK TERPILIH ID: {p_id}] {p_title}")
 
-    # 4. Penjanaan Link Affiliate Rasmi Akaun Anda
+    # 4. Penjanaan Link Affiliate Rasmi Akaun Anda via Official Lazada API
     affiliate_link = generate_tracking_link(lazada_app_key, lazada_app_secret, lazada_token, p_id)
     if not affiliate_link:
         raise Exception(f"❌ Gagal menjana link affiliate rasmi untuk produk ID {p_id}")
@@ -143,7 +143,7 @@ def run_pipeline():
     mark_vector_posted(vector_url, vector_token, p_id, p_title)
 
     print("\n==================================================")
-    print("🟢 [SUCCESS] PIPELINE DIRECT FETCH SEARCH COMPLETED!")
+    print("🟢 [SUCCESS] PIPELINE DUCKDUCKGO SEARCH COMPLETED!")
     print("==================================================")
 
 if __name__ == "__main__":
