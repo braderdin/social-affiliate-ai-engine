@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.guardrails import evaluate_product, normalize_image_url
 from src.redis_db import is_product_posted, mark_product_posted
 from src.vector_db import is_similar_product_posted, mark_vector_posted
-from src.lazada_api import generate_tracking_link
+from src.lazada_api import generate_tracking_link, fetch_targeted_lazada_candidates
 from src.facebook_ai_persona import generate_facebook_caption
 from src.ai_persona import generate_caption as generate_telegram_caption
 from src.facebook_bot import send_to_facebook_page
@@ -19,7 +19,6 @@ from src.telegram_bot import send_photo_to_telegram
 from pipeline_v2.ai_cikgu_persona import generate_search_keywords
 from pipeline_v2.lazada_keyword_search import search_lazada_candidates
 
-# Muat turun persekitaran tempatan jika wujud
 load_dotenv('.env.local')
 
 def sanitize(val):
@@ -30,50 +29,8 @@ def sanitize(val):
         val = val[1:-1]
     return val.strip()
 
-def run_pipeline():
-    print("==================================================")
-    print("🚀 [PIPELINE V2] Executing 2-Hour Lazada Social Affiliate Engine")
-    print("==================================================")
-
-    # 1. Baca Kunci Tanpa Sebarang Hardcode
-    openrouter_url = sanitize(os.getenv("OPENROUTER_BASE_URL"))
-    openrouter_model = sanitize(os.getenv("OPENROUTER_MODEL"))
-    openrouter_key = sanitize(os.getenv("OPENROUTER_API_KEY"))
-
-    lazada_app_key = sanitize(os.getenv("LAZADA_LiteApp_Key") or os.getenv("LAZADA_APP_KEY"))
-    lazada_app_secret = sanitize(os.getenv("LAZADA_LiteApp_Secret") or os.getenv("LAZADA_APP_SECRET"))
-    lazada_token = sanitize(os.getenv("LAZADA_USER_TOKEN"))
-
-    redis_url = sanitize(os.getenv("UPSTASH_REDIS_REST_URL"))
-    redis_token = sanitize(os.getenv("UPSTASH_REDIS_REST_TOKEN"))
-
-    vector_url = sanitize(os.getenv("UPSTASH_VECTOR_REST_URL"))
-    vector_token = sanitize(os.getenv("UPSTASH_VECTOR_REST_TOKEN"))
-
-    fb_page_id = sanitize(os.getenv("FACEBOOK_PAGE_ID") or os.getenv("META_PAGE_ID"))
-    fb_page_token = sanitize(os.getenv("FB_PAGE_ACCESS_TOKEN") or os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN"))
-
-    tg_token = sanitize(os.getenv("TELEGRAM_BOT_TOKEN"))
-    tg_chat_id = sanitize(os.getenv("TELEGRAM_CHAT_ID"))
-
-    # Semakan Kunci Asas
-    if not lazada_app_key or not lazada_app_secret or not lazada_token:
-        raise ValueError("🔴 [KRITIKAL] Kunci API Lazada tidak ditemui di dalam Environment Secrets!")
-
-    # 2. Jana Keywords melalui AI Persona Cikgu Suri Rumah
-    cat_name, keywords = generate_search_keywords(openrouter_url, openrouter_model, openrouter_key)
-
-    # 3. Cari Produk di Lazada API via Fetch
-    candidates = search_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_token, keywords, min_commission_rate=20.0)
-
-    if not candidates:
-        print("⚠️ Tiada produk ditemui untuk pusingan ini. Sesi dihentikan secara selamat.")
-        return
-
-    selected_product = None
-    selected_image = ""
-
-    # 4. Tapis Calon Menggunakan Guardrails, Redis, & Vector DB
+def filter_and_select_product(candidates, redis_url, redis_token, vector_url, vector_token):
+    """Menapis senarai calon melalui Guardrails, Redis, & Vector DB."""
     for prod in candidates:
         p_id = prod["id"]
         p_title = prod["title"]
@@ -94,16 +51,60 @@ def run_pipeline():
             print(f"⏭️ [VECTOR DUP] Produk serupa dengan '{p_title}' pernah dipos dalam 48 jam lepas. Langkau.")
             continue
 
-        # Resolusi Gambar Tinggi
         selected_image = normalize_image_url(prod["image"])
         if not selected_image:
             continue
 
-        selected_product = prod
-        break
+        return prod, selected_image
+
+    return None, ""
+
+def run_pipeline():
+    print("==================================================")
+    print("🚀 [PIPELINE V2] Executing 2-Hour Lazada Social Affiliate Engine")
+    print("==================================================")
+
+    # 1. Baca Kunci Persekitaran
+    openrouter_url = sanitize(os.getenv("OPENROUTER_BASE_URL"))
+    openrouter_model = sanitize(os.getenv("OPENROUTER_MODEL"))
+    openrouter_key = sanitize(os.getenv("OPENROUTER_API_KEY"))
+
+    lazada_app_key = sanitize(os.getenv("LAZADA_LiteApp_Key") or os.getenv("LAZADA_APP_KEY"))
+    lazada_app_secret = sanitize(os.getenv("LAZADA_LiteApp_Secret") or os.getenv("LAZADA_APP_SECRET"))
+    lazada_token = sanitize(os.getenv("LAZADA_USER_TOKEN"))
+
+    redis_url = sanitize(os.getenv("UPSTASH_REDIS_REST_URL"))
+    redis_token = sanitize(os.getenv("UPSTASH_REDIS_REST_TOKEN"))
+
+    vector_url = sanitize(os.getenv("UPSTASH_VECTOR_REST_URL") or os.getenv("UPSTASH_VECTOR_ENDPOINT_URL"))
+    vector_token = sanitize(os.getenv("UPSTASH_VECTOR_REST_TOKEN"))
+
+    fb_page_id = sanitize(os.getenv("FACEBOOK_PAGE_ID") or os.getenv("FB_PAGE_ID") or os.getenv("META_PAGE_ID"))
+    fb_page_token = sanitize(os.getenv("FB_PAGE_ACCESS_TOKEN") or os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN") or os.getenv("META_PAGE_ACCESS_TOKEN"))
+
+    tg_token = sanitize(os.getenv("TELEGRAM_BOT_TOKEN"))
+    tg_chat_id = sanitize(os.getenv("TELEGRAM_CHAT_ID"))
+
+    if not lazada_app_key or not lazada_app_secret or not lazada_token:
+        raise ValueError("🔴 [KRITIKAL] Kunci API Lazada tidak ditemui di dalam Environment Secrets!")
+
+    # 2. Jana Keywords via AI Persona Cikgu Suri Rumah
+    cat_name, keywords = generate_search_keywords(openrouter_url, openrouter_model, openrouter_key)
+
+    # 3. Carian Produk Keyword
+    candidates = search_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_token, keywords, min_commission_rate=20.0)
+
+    # 4. Tapis Calon Keyword
+    selected_product, selected_image = filter_and_select_product(candidates, redis_url, redis_token, vector_url, vector_token)
+
+    # 5. MEKANISME FALLBACK AUTOMATIK
+    if not selected_product:
+        print("\n⚠️ [FALLBACK ACTIVATED] Tiada produk carian keyword lulus Guardrail. Menggunakan Targeted Feed API...")
+        fallback_candidates = fetch_targeted_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_token, max_items=50)
+        selected_product, selected_image = filter_and_select_product(fallback_candidates, redis_url, redis_token, vector_url, vector_token)
 
     if not selected_product:
-        print("🔴 Tiada produk yang melepasi semua ujian Guardrails/Redis/Vector DB untuk pusingan ini.")
+        print("🔴 [PIPELINE WARN] Tiada produk yang melepasi Guardrails/Redis/Vector DB untuk pusingan ini.")
         return
 
     p_id = selected_product["id"]
@@ -112,14 +113,14 @@ def run_pipeline():
 
     print(f"\n🟢 [PRODUK TERPILIH] ID: {p_id} | {p_title}")
 
-    # 5. Penjanaan Link Affiliate Rasmi Lazada
+    # 6. Penjanaan Link Affiliate Rasmi
     affiliate_link = generate_tracking_link(lazada_app_key, lazada_app_secret, lazada_token, p_id)
     if not affiliate_link:
         raise Exception(f"❌ Gagal menjana link affiliate rasmi untuk produk ID {p_id}")
 
     print(f"🔗 Link Affiliate Rasmi: {affiliate_link}")
 
-    # 6. Jana Copywriting Facebook & Hantar (Gambar + Komen Link)
+    # 7. Post ke Facebook Page (Gambar + Komen Link)
     if fb_page_id and fb_page_token:
         fb_ok, fb_caption, fb_comment_text = generate_facebook_caption(openrouter_url, openrouter_model, openrouter_key, p_title, p_desc)
         if fb_ok:
@@ -130,7 +131,7 @@ def run_pipeline():
             else:
                 print(f"⚠️ [FACEBOOK WARN] {fb_res}")
 
-    # 7. Jana Copywriting Telegram & Hantar
+    # 8. Post ke Telegram Channel
     if tg_token and tg_chat_id:
         tg_ok, tg_caption = generate_telegram_caption(openrouter_url, openrouter_model, openrouter_key, p_title, p_desc)
         if tg_ok:
@@ -141,7 +142,7 @@ def run_pipeline():
             else:
                 print(f"⚠️ [TELEGRAM WARN] {tg_res}")
 
-    # 8. Rekodkan Rekod DEDUP ke Redis & Vector DB
+    # 9. Rekodkan ke Redis & Vector DB
     mark_product_posted(redis_url, redis_token, p_id, p_title)
     mark_vector_posted(vector_url, vector_token, p_id, p_title)
 
