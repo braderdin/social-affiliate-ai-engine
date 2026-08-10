@@ -1,4 +1,4 @@
-name: Lazada Automation Tests (Fetch vs Puppeteer vs Playwright)
+name: Lazada Automation Tests (Fetch vs Puppeteer Stealth vs Playwright Stealth)
 
 on:
   push:
@@ -29,9 +29,9 @@ jobs:
           pip install -r requirements.txt
           pip install playwright pytest
 
-      - name: 📦 Install Node.js Dependencies (Puppeteer)
+      - name: 📦 Install Node.js Dependencies (Puppeteer Stealth)
         run: |
-          npm install puppeteer dotenv
+          npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth dotenv
 
       - name: 🌐 Install Playwright Browsers & OS Dependencies
         run: |
@@ -49,7 +49,7 @@ jobs:
         run: |
           python tests_runner/test_lazada_fetch.py
 
-      - name: 🧪 [TEST 2] Run Puppeteer Automation Test
+      - name: 🧪 [TEST 2B] Run Puppeteer Stealth Test
         continue-on-error: true
         env:
           LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
@@ -59,9 +59,9 @@ jobs:
           LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
           LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
         run: |
-          node tests_runner/test_lazada_puppeteer.js
+          node tests_runner/test_lazada_puppeteer_stealth.js
 
-      - name: 🧪 [TEST 3] Run Playwright Automation Test
+      - name: 🧪 [TEST 3B] Run Playwright Stealth Test
         continue-on-error: true
         env:
           LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
@@ -71,4 +71,4 @@ jobs:
           LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
           LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
         run: |
-          python tests_runner/test_lazada_playwright.py
+          python tests_runner/test_lazada_playwright_stealth.py
