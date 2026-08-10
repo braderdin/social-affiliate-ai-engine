@@ -1,4 +1,4 @@
-name: Lazada Automation Tests (Fetch vs Puppeteer Stealth vs Playwright Stealth)
+name: Lazada Affiliate Engine (Fetch API Pipeline)
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-tests:
+  run-lazada-engine:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,27 +18,12 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 🟢 Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: 📦 Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install playwright pytest
 
-      - name: 📦 Install Node.js Dependencies (Puppeteer Stealth)
-        run: |
-          npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth dotenv
-
-      - name: 🌐 Install Playwright Browsers & OS Dependencies
-        run: |
-          npx playwright install chromium --with-deps
-
-      - name: 🧪 [TEST 1] Run Fetch / Direct API Test
-        continue-on-error: true
+      - name: 🚀 Run Lazada Direct API Fetch
         env:
           LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
           LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET }}
@@ -48,27 +33,3 @@ jobs:
           LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
         run: |
           python tests_runner/test_lazada_fetch.py
-
-      - name: 🧪 [TEST 2B] Run Puppeteer Stealth Test
-        continue-on-error: true
-        env:
-          LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
-          LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET }}
-          LAZADA_USER_TOKEN: ${{ secrets.LAZADA_USER_TOKEN }}
-          LAZADA_MEMBER_ID: ${{ secrets.LAZADA_MEMBER_ID }}
-          LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
-          LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
-        run: |
-          node tests_runner/test_lazada_puppeteer_stealth.js
-
-      - name: 🧪 [TEST 3B] Run Playwright Stealth Test
-        continue-on-error: true
-        env:
-          LAZADA_APP_KEY: ${{ secrets.LAZADA_APP_KEY }}
-          LAZADA_APP_SECRET: ${{ secrets.LAZADA_APP_SECRET }}
-          LAZADA_USER_TOKEN: ${{ secrets.LAZADA_USER_TOKEN }}
-          LAZADA_MEMBER_ID: ${{ secrets.LAZADA_MEMBER_ID }}
-          LAZADA_LiteApp_Key: ${{ secrets.LAZADA_LITEAPP_KEY }}
-          LAZADA_LiteApp_Secret: ${{ secrets.LAZADA_LITEAPP_SECRET }}
-        run: |
-          python tests_runner/test_lazada_playwright_stealth.py
