@@ -6,46 +6,46 @@ import requests
 
 # Senarai Kategori Diperluas (Persona Cikgu Suri Rumah Muslimah)
 EXPANDED_CATEGORIES = [
-    {"name": "barangan dapur", "desc": "Periuk seramik, air fryer mini, bekas simpanan kedap udara, gajet pemotong sayur"},
-    {"name": "barangan rumah", "desc": "Penyusun ruang laci, rak kasut bertingkat, penyangkut baju jimat ruang, pelekat dinding"},
-    {"name": "barangan baby & ibu berpantang", "desc": "Kelengkapan bayi, mandian lembut, tungku moden, bengkung, bakul baju bayi"},
-    {"name": "barangan kosmetik & penjagaan diri", "desc": "Skincare mesra wuduk, pelembap bibir, pembersih muka halal, lotion"},
-    {"name": "mainan bayi dan mainan kanak2", "desc": "Mainan edutainment, Montessori, sensory play kit, papan tulis magnetik"},
-    {"name": "aksesori diy rumah", "desc": "Pelekat kalis air dapur, gam tampal paip, gajet lampu sensor, alat pembaikan mudah"},
-    {"name": "peralatan sekolah & alat tulis anak-anak", "desc": "Pencetak mini sticker, set pemadam comel, beg sekolah ergonomik"},
-    {"name": "kelengkapan solat & ibadah keluarga", "desc": "Sejadah tebal empuk, telekung travel ringkas, rak al-Quran kayu, rehal"},
-    {"name": "gajet & elektrik jimat tenaga", "desc": "Pembersih vakum mini, periuk nasi elektrik kecil, penimbang makanan digital"},
-    {"name": "aksesori pembersihan & kebersihan rumah", "desc": "Pengelap cermin magnetik, sabun wangi mop, berus periuk automatik"},
-    {"name": "pakaian muslimah & fesyen keluarga", "desc": "Tudung sarung ironless, inner sejuk, stokin wuduk, baju kelawar selesa"},
-    {"name": "organizer & storan serbaguna", "desc": "Kotak simpanan lutsinar, penyusun rempah ratus, bakul pakaian lipat"}
+    {"name": "barangan dapur", "desc": "periuk, air fryer, bekas, pisau, kuali, blender, rak dapur"},
+    {"name": "barangan rumah", "desc": "rak kasut, penyangkut, pelekat, langsir, sarung, penyusun"},
+    {"name": "barangan baby & ibu berpantang", "desc": "tungku, bengkung, mandian, bakul, botol, stokin"},
+    {"name": "barangan kosmetik & penjagaan diri", "desc": "skincare, pelembap, pembersih, lotion, gincu, serum"},
+    {"name": "mainan bayi dan mainan kanak2", "desc": "mainan, montessori, sensory, papan tulis, lego, puzzle"},
+    {"name": "aksesori diy rumah", "desc": "pelekat, gam, lampu, pemutar, span, pita"},
+    {"name": "peralatan sekolah & alat tulis anak-anak", "desc": "pencetak, pemadam, beg sekolah, pensel, pembaris"},
+    {"name": "kelengkapan solat & ibadah keluarga", "desc": "sejadah, telekung, rehal, alquran, tasbih, kopiah"},
+    {"name": "gajet & elektrik jimat tenaga", "desc": "vacuum, periuk nasi, penimbang, cerek, kipas mini"},
+    {"name": "aksesori pembersihan & kebersihan rumah", "desc": "mop, berus, sabun, pengelap, tuala, berus gigi"},
+    {"name": "pakaian muslimah & fesyen keluarga", "desc": "tudung, inner, stokin, baju kelawar, khimar"},
+    {"name": "organizer & storan serbaguna", "desc": "kotak, bakul, bekas, beg storan, penyusun"}
 ]
 
 def generate_search_keywords(base_url, model, api_key):
     """
-    Memilih 1 kategori secara rawak dan menggunakan AI Persona 'Cikgu Suri Rumah' 
-    untuk menjana 5 kata kunci carian spesifik di Lazada.
+    Memilih 1 kategori dan mengarahkan AI Persona 'Cikgu Suri Rumah' 
+    menjana 5 kata kunci carian PENDEK (1 hingga 2 PERKATAAN SAHAJA).
     """
-    if not base_url or not model or not api_key:
-        print("⚠️ [AI PERSONA WARN] Kunci OpenRouter / Model tidak lengkap. Menggunakan kata kunci asas...")
-        selected_cat = random.choice(EXPANDED_CATEGORIES)
-        return selected_cat["name"], ["periuk seramik", "bekas kedap udara", "air fryer mini", "rak dapur", "mop automatik"]
-
     selected_cat = random.choice(EXPANDED_CATEGORIES)
     category_name = selected_cat["name"]
     category_desc = selected_cat["desc"]
 
-    system_prompt = """
-Anda ialah 'Cikgu Suri Rumah', seorang pakar dalam mencari barangan praktikal, jimat, dan berkualiti untuk keluarga Muslimah di Malaysia.
-Tugas anda adalah menghasilkan 5 kata kunci carian (keywords) produk yang sangat spesifik dan popular di Lazada Malaysia.
+    if not base_url or not model or not api_key:
+        print("⚠️ [AI PERSONA WARN] Kunci OpenRouter tidak lengkap. Menggunakan kata kunci asas pendek...")
+        fallback_kws = [k.strip() for k in category_desc.split(",")][:5]
+        return category_name, fallback_kws
 
-SYARAT KATA KUNCI:
-1. Menjana betul-betul 5 kata kunci carian dalam Bahasa Melayu atau Bahasa Inggeris biasa yang biasa ditaip di carian e-dagang.
-2. Kata kunci mesti fokus kepada produk fizikal spesifik (Contoh: "air fryer mini", "telekung travel", "pencetak mini sticker").
-3. WAJIB memulangkan hasil dalam format JSON ARRAY SAHAJA tanpa sebarang teks tambahan:
+    system_prompt = """
+Anda ialah 'Cikgu Suri Rumah'.
+Tugas anda: Jana BETUL-BETUL 5 kata kunci carian carian produk di Lazada.
+
+ARAHAN SYARAT KETAT:
+1. Setiap kata kunci MESTI SANGAT PENDEK: 1 HINGGA 2 PERKATAAN SAHAJA (Contoh: "periuk", "sejadah", "mop", "air fryer", "telekung", "rak").
+2. DILARANG guna ayat panjang atau frasa berangkai (Contoh DILARANG: "air fryer digital mini jimat tenaga").
+3. WAJIB memulangkan hasil dalam format JSON ARRAY SAHAJA tanpa sebarang teks penjelasan:
 ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
 """
 
-    prompt_user = f"Kategori Terpilih: {category_name}\nContoh Idea: {category_desc}\nJana 5 kata kunci carian produk Lazada:"
+    prompt_user = f"Kategori: {category_name}\nContoh Idea Pendek: {category_desc}\nJana 5 kata kunci carian Lazada pendek (1-2 perkataan sahaja):"
 
     payload = {
         "model": model,
@@ -53,8 +53,8 @@ SYARAT KATA KUNCI:
             {"role": "system", "content": system_prompt.strip()},
             {"role": "user", "content": prompt_user.strip()}
         ],
-        "temperature": 0.7,
-        "max_tokens": 150
+        "temperature": 0.5,
+        "max_tokens": 100
     }
 
     url = f"{base_url.rstrip('/')}/chat/completions"
@@ -72,11 +72,15 @@ SYARAT KATA KUNCI:
 
             keywords = json.loads(cleaned)
             if isinstance(keywords, list) and len(keywords) > 0:
-                print(f"🎯 [AI PERSONA] Kategori: '{category_name}' | Keywords: {keywords}")
-                return category_name, keywords
+                # Bersihkan kata kunci supaya tidak lebih 2 perkataan
+                shortened_kws = []
+                for kw in keywords:
+                    words = str(kw).strip().split()
+                    shortened_kws.append(" ".join(words[:2]))
+                print(f"🎯 [AI PERSONA] Kategori: '{category_name}' | Keywords Pendek: {shortened_kws}")
+                return category_name, shortened_kws
     except Exception as e:
-        print(f"⚠️ [AI PERSONA WARN] Gagal menjana keyword via AI: {e}")
+        print(f"⚠️ [AI PERSONA WARN] Ralat OpenRouter AI: {e}")
 
-    # Fallback jika AI gagal
-    fallback_keywords = [k.strip() for k in category_desc.split(",")]
-    return category_name, fallback_keywords[:5]
+    fallback_kws = [k.strip() for k in category_desc.split(",")][:5]
+    return category_name, fallback_kws
