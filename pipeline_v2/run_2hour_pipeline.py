@@ -69,8 +69,9 @@ def run_pipeline():
 
     selected_product = None
     selected_image = ""
+    affiliate_link = ""
 
-    print("\n🛡️ [MEMULAKAN TAPISAN GUARDRAIL & DEDUP]...")
+    print("\n🛡️ [MEMULAKAN TAPISAN GUARDRAIL, DEDUP & GENERATE AFFILIATE LINK]...")
     for prod in candidates:
         p_id = prod["id"]
         p_title = prod["title"]
@@ -92,28 +93,30 @@ def run_pipeline():
             print(f"   ⏭️ [VECTOR DUP] Produk serupa dengan '{p_title}' pernah dipos dalam 48 jam lepas. Langkau.")
             continue
 
-        selected_image = normalize_image_url(prod["image"])
-        if not selected_image:
+        img_url = normalize_image_url(prod["image"])
+        if not img_url:
+            continue
+
+        # D. Penjanaan Link Affiliate Rasmi via Official Lazada API
+        link = generate_tracking_link(lazada_app_key, lazada_app_secret, lazada_token, p_id)
+        if not link:
+            print(f"   ⚠️ [LINK WARN] Lazada API memulangkan link kosong untuk ID {p_id}. Mencuba produk seterusnya...")
             continue
 
         selected_product = prod
+        selected_image = img_url
+        affiliate_link = link
         break
 
-    if not selected_product:
-        print("\n🔴 [PIPELINE WARN]: Semua calon produk ditolak oleh Guardrails/Redis/Vector DB.")
+    if not selected_product or not affiliate_link:
+        print("\n🔴 [PIPELINE WARN]: Tiada calon produk yang mempunyai link affiliate sah selepas tapisan Guardrails/Redis/Vector DB.")
         return
 
     p_id = selected_product["id"]
     p_title = selected_product["title"]
     p_desc = selected_product["desc"]
 
-    print(f"\n🟢 [PRODUK TERPILIH ID: {p_id}] {p_title}")
-
-    # 4. Penjanaan Link Affiliate Rasmi Akaun Anda via Official Lazada API
-    affiliate_link = generate_tracking_link(lazada_app_key, lazada_app_secret, lazada_token, p_id)
-    if not affiliate_link:
-        raise Exception(f"❌ Gagal menjana link affiliate rasmi untuk produk ID {p_id}")
-
+    print(f"\n🟢 [PRODUK TERPILIH & AFFILIATE LINK BERJAYA ID: {p_id}] {p_title}")
     print(f"🔗 Link Affiliate Rasmi Anda: {affiliate_link}")
 
     # 5. Post ke Facebook Page (Gambar + Komen Link)

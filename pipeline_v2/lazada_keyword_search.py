@@ -1,3 +1,4 @@
+import time
 import re
 import json
 import traceback
@@ -6,7 +7,7 @@ from duckduckgo_search import DDGS
 def search_lazada_via_duckduckgo(keyword):
     """
     Menggunakan library duckduckgo_search untuk mencari produk Lazada
-    berasaskan kata kunci tanpa menyentuh terus pelayan web Lazada.
+    berasaskan kata kunci tanpa disekat oleh pelayan web Lazada.
     """
     kw_clean = str(keyword).strip()
     query = f'site:lazada.com.my/products/ "{kw_clean}"'
@@ -67,7 +68,7 @@ def search_lazada_via_duckduckgo(keyword):
                         extracted_products.append({
                             "id": product_id,
                             "title": clean_title,
-                            "image": "https://img.lazcdn.com/g/p/dummy.jpg", # Akal digantikan oleh normalize_image_url
+                            "image": "https://img.lazcdn.com/g/p/dummy.jpg",
                             "price": 35.00,
                             "discountPrice": 35.00,
                             "outOfStock": False,
@@ -76,15 +77,14 @@ def search_lazada_via_duckduckgo(keyword):
                         })
 
     except Exception as e:
-        print(f"   💥 [DUCKDUCKGO EXCEPTION]: Ralat carian DuckDuckGo: {e}")
-        traceback.print_exc()
+        print(f"   ⚠️ [DUCKDUCKGO WARN]: Ralat carian DuckDuckGo/RateLimit: {e}")
 
     print(f"   📦 Jumpa {len(extracted_products)} produk sah dari DuckDuckGo untuk '{kw_clean}'.")
     return extracted_products
 
 def search_lazada_candidates_by_keywords(keywords):
     """
-    Menjalankan carian DuckDuckGo untuk semua 5 kata kunci Cikgu Suri Rumah.
+    Menjalankan carian DuckDuckGo untuk semua kata kunci dengan jeda masa anti-ratelimit.
     """
     all_candidates = []
     seen_ids = set()
@@ -94,7 +94,11 @@ def search_lazada_candidates_by_keywords(keywords):
     print(f"📋 Keywords: {keywords}")
     print("==================================================")
 
-    for kw in keywords:
+    for idx, kw in enumerate(keywords):
+        if idx > 0:
+            # Jeda masa 2.5 saat antara carian untuk elak DuckDuckGo 403 RateLimit
+            time.sleep(2.5)
+
         items = search_lazada_via_duckduckgo(kw)
         for prod in items:
             p_id = prod["id"]
