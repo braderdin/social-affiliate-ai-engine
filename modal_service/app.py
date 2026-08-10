@@ -4,7 +4,6 @@ import re
 import json
 from typing import List, Dict, Any
 
-# Imej Docker Debian dengan Playwright & System Dependencies
 image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install("playwright==1.42.0", "playwright-stealth==1.0.6", "httpx")
@@ -16,8 +15,8 @@ app = modal.App(name="lazada-playwright-scraper", image=image)
 @app.function(timeout=120)
 async def search_lazada_products(keyword: str, max_results: int = 5) -> Dict[str, Any]:
     """
-    Fungsi Scraper di Modal.com yang memulangkan data produk ATAU laporan diagnostik lengkap sekiranya disekat.
-    TIDAK MENGGUNAKAN SEBARANG DUMMY LINK ATAU GAMBAR FALLBACK.
+    Scraper Playwright Lazada di Modal.com.
+    MENGESTRAK DATA SEBENAR TANPA SEBARANG DATA DUMMY ATAU PAUTAN PALSU.
     """
     from playwright.async_api import async_playwright
     from playwright_stealth import stealth_async
@@ -37,7 +36,7 @@ async def search_lazada_products(keyword: str, max_results: int = 5) -> Dict[str
         "target_url": search_url,
         "http_status": None,
         "page_title": "",
-        "window_pagedata_found": False,
+        "extraction_source": "none",
         "dom_items_found": 0,
         "is_captcha_detected": False,
         "error_message": ""
@@ -59,100 +58,150 @@ async def search_lazada_products(keyword: str, max_results: int = 5) -> Dict[str
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             viewport={"width": 1366, "height": 768},
-            locale="en-US",
-            timezone_id="Asia/Kuala_Lumpur"
+            locale="ms-MY",
+            timezone_id="Asia/Kuala_Lumpur",
+            extra_http_headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "ms-MY,ms;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Sec-Ch-Ua": '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1"
+            }
         )
 
-        page = await context.new_page()
+        page = await context.close_page() if hasattr(context, 'close_page') else await context.new_page()
         await stealth_async(page)
 
         try:
-            # 1. Melawat Homepage
-            await page.goto("https://www.lazada.com.my/", wait_until="domcontentloaded", timeout=20000)
-            await page.wait_for_timeout(2000)
+            # 1. Melawat Homepage Lazada untuk mendapatkan Session Cookie sah
+            try:
+                await page.goto("https://www.lazada.com.my/", wait_until="domcontentloaded", timeout=20000)
+                await page.wait_for_timeout(2500)
+            except Exception as hp_err:
+                print(f"⚠️ Warning Homepage: {hp_err}")
 
-            # 2. Melawat Halaman Carian
+            # 2. Navigasi ke Halaman Carian
             response = await page.goto(search_url, wait_until="domcontentloaded", timeout=25000)
             if response:
                 diagnostics["http_status"] = response.status
 
             await page.wait_for_timeout(3000)
-
             diagnostics["page_title"] = await page.title()
 
-            # Pengesanan CAPTCHA / Sekatan Akamai
-            if "security" in diagnostics["page_title"].lower() or "punish" in page.url:
+            # Semakan Sekatan Akamai / CAPTCHA
+            if "security" in diagnostics["page_title"].lower() or "punish" in page.url or "deny" in diagnostics["page_title"].lower():
                 diagnostics["is_captcha_detected"] = True
 
-            # 3. Semakan window.pageData
-            page_data = await page.evaluate("() => window.pageData || null")
-            if page_data and "mods" in page_data and "listItems" in page_data["mods"]:
-                diagnostics["window_pagedata_found"] = True
-                list_items = page_data["mods"]["listItems"]
+            # Scroll ke bawah untuk trigger lazy loading
+            await page.evaluate("window.scrollBy(0, 800);")
+            await page.wait_for_timeout(1500)
 
-                for item in list_items[:max_results]:
-                    raw_url = item.get("itemUrl", "")
-                    if raw_url.startswith("//"):
-                        raw_url = "https:" + raw_url
-                    elif raw_url and not raw_url.startswith("http"):
-                        raw_url = "https://www.lazada.com.my" + raw_url
+            # 3. Menganalisis & Mengestrakan Data Produk Menggunakan JavaScript Evaluator Terus Di Dalam Pelayar
+            extraction_script = """
+            () => {
+                let items = [];
+                let source = 'none';
 
-                    pid_match = re.search(r'-i(\d+)', raw_url) or re.search(r'i(\d+)\.html', raw_url)
-                    product_id = pid_match.group(1) if pid_match else str(item.get("itemId", ""))
+                // A. Semakan window.pageData
+                if (window.pageData && window.pageData.mods && window.pageData.mods.listItems) {
+                    source = 'window.pageData';
+                    items = window.pageData.mods.listItems.map(item => {
+                        let rawUrl = item.itemUrl || '';
+                        if (rawUrl.startsWith('//')) rawUrl = 'https:' + rawUrl;
+                        else if (rawUrl && !rawUrl.startsWith('http')) rawUrl = 'https://www.lazada.com.my' + rawUrl;
 
-                    title = str(item.get("name", "")).strip()
-                    price = str(item.get("price", "0")).strip()
-                    image_url = item.get("image", "")
+                        let pid = String(item.itemId || '');
+                        if (!pid && rawUrl) {
+                            let m = rawUrl.match(/-i(\\d+)/) || rawUrl.match(/i(\\d+)\\.html/);
+                            if (m) pid = m[1];
+                        }
 
-                    if title and raw_url:
-                        results.append({
-                            "product_id": product_id,
-                            "title": title,
-                            "price": price,
-                            "image": image_url,
-                            "raw_url": raw_url
-                        })
+                        return {
+                            product_id: pid,
+                            title: (item.name || '').trim(),
+                            price: String(item.price || '0').trim(),
+                            image: item.image || '',
+                            raw_url: rawUrl
+                        };
+                    }).filter(x => x.title && x.raw_url);
+                }
 
-            # 4. Fallback DOM Selectors
-            if not results:
-                await page.evaluate("window.scrollBy(0, 1000);")
-                await page.wait_for_timeout(1500)
+                // B. Fallback DOM Parsing
+                if (items.length === 0) {
+                    source = 'dom_parsing';
+                    const cards = document.querySelectorAll('div[data-qa-type="product-item"], div[data-tracking="product-card"], .BmBOZ, div[class*="item-card"]');
+                    
+                    cards.forEach(card => {
+                        const aTag = card.querySelector('a[href*="/products/"]') || card.querySelector('a');
+                        if (!aTag) return;
 
-                items = await page.query_selector_all('div[data-qa-type="product-item"], .BmBOZ, div[data-tracking="product-card"]')
-                diagnostics["dom_items_found"] = len(items)
+                        let href = aTag.getAttribute('href') || '';
+                        if (!href) return;
+                        if (href.startsWith('//')) href = 'https:' + href;
+                        else if (href.startsWith('/')) href = 'https://www.lazada.com.my' + href;
 
-                for item in items[:max_results]:
-                    link_elem = await item.query_selector('a[href*="/products/"]')
-                    if not link_elem:
-                        continue
+                        // Ekstrak Tajuk
+                        let title = aTag.getAttribute('title') || '';
+                        if (!title) {
+                            const img = card.querySelector('img');
+                            if (img) title = img.getAttribute('alt') || '';
+                        }
+                        if (!title) {
+                            const titleEl = card.querySelector('div[class*="title"], div[class*="Name"], div.Rf31n, ._17mR_');
+                            if (titleEl) title = titleEl.innerText || titleEl.textContent || '';
+                        }
+                        if (!title) {
+                            title = aTag.innerText || aTag.textContent || '';
+                        }
+                        title = title.replace(/\\s+/g, ' ').trim();
 
-                    raw_href = await link_elem.get_attribute('href') or ""
-                    raw_url = "https:" + raw_href if raw_href.startswith("//") else raw_href
-                    if not raw_url.startswith("http"):
-                        raw_url = "https://www.lazada.com.my" + raw_href
+                        // Ekstrak Harga
+                        let price = '0';
+                        const priceEl = card.querySelector('span[class*="price"], div[class*="price"], span.ooA36');
+                        if (priceEl) price = (priceEl.innerText || priceEl.textContent || '0').trim();
 
-                    pid_match = re.search(r'-i(\d+)', raw_url) or re.search(r'i(\d+)\.html', raw_url)
-                    product_id = pid_match.group(1) if pid_match else ""
+                        // Ekstrak Imej
+                        let imgUrl = '';
+                        const imgEl = card.querySelector('img');
+                        if (imgEl) {
+                            imgUrl = imgEl.getAttribute('src') || imgEl.getAttribute('data-src') || imgEl.getAttribute('data-ks-lazyload') || '';
+                            if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl;
+                        }
 
-                    title = await link_elem.get_attribute('title') or await link_elem.text_content() or ""
-                    img_elem = await item.query_selector('img')
-                    img_url = ""
-                    if img_elem:
-                        img_url = await img_elem.get_attribute('src') or await img_elem.get_attribute('data-src') or ""
-                        if img_url.startswith("//"):
-                            img_url = "https:" + img_url
+                        let pidMatch = href.match(/-i(\\d+)/) || href.match(/i(\\d+)\\.html/);
+                        let pid = pidMatch ? pidMatch[1] : '';
 
-                    price_elem = await item.query_selector('span[class*="price"]') or await item.query_selector('span[class*="ooA36"]')
-                    price_str = await price_elem.text_content() if price_elem else "0"
+                        if (title && href && title.length > 3) {
+                            items.push({
+                                product_id: pid,
+                                title: title,
+                                price: price,
+                                image: imgUrl,
+                                raw_url: href
+                            });
+                        }
+                    });
+                }
 
-                    if title and raw_url:
-                        results.append({
-                            "product_id": product_id,
-                            "title": title.strip(),
-                            "price": price_str.strip(),
-                            "image": img_url,
-                            "raw_url": raw_url
-                        })
+                return {
+                    source: source,
+                    items: items
+                };
+            }
+            """
+
+            extracted = await page.evaluate(extraction_script)
+            diagnostics["extraction_source"] = extracted.get("source", "none")
+            raw_items = extracted.get("items", [])
+            diagnostics["dom_items_found"] = len(raw_items)
+
+            for item in raw_items[:max_results]:
+                results.append(item)
 
         except Exception as e:
             diagnostics["error_message"] = str(e)
