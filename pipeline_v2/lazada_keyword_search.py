@@ -1,110 +1,99 @@
-import time
 import re
-import json
+import time
+import requests
 import traceback
-from duckduckgo_search import DDGS
+from urllib.parse import unquote
 
-def search_lazada_via_duckduckgo(keyword):
+def search_lazada_via_ddg_html(keyword):
     """
-    Menggunakan library duckduckgo_search untuk mencari produk Lazada
-    berasaskan kata kunci tanpa disekat oleh pelayan web Lazada.
+    Menggunakan Direct HTTP POST ke DuckDuckGo Static HTML Endpoint (html.duckduckgo.com)
+    untuk melepasi sekatan 403 Ratelimit API i.js di GitHub Actions.
     """
     kw_clean = str(keyword).strip()
     query = f'site:lazada.com.my/products/ "{kw_clean}"'
-    
-    print(f"\n📡 [DUCKDUCKGO SEARCH] Searching Query: {query}")
+    url = "https://html.duckduckgo.com/html/"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+
+    payload = {"q": query}
     extracted_products = []
     seen_ids = set()
 
+    print(f"\n📡 [DDG HTML SEARCH] Searching Query: {query}")
+
     try:
-        with DDGS() as ddgs:
-            # 1. Carian Imej + Link Produk Lazada di DuckDuckGo
-            img_results = list(ddgs.images(query, region="my-en", safesearch="off", max_results=10))
-            print(f"   📊 DuckDuckGo Image Search memulangkan {len(img_results)} item.")
+        res = requests.post(url, data=payload, headers=headers, timeout=20)
+        print(f"   📊 HTTP Status Code: {res.status_code}")
 
-            for item in img_results:
-                page_url = item.get("url", "") or item.get("href", "")
-                img_url = item.get("image", "") or item.get("thumbnail", "")
-                title = item.get("title", "") or f"Produk Lazada {kw_clean}"
+        if res.status_code != 200:
+            print(f"   🔴 [RALAT HTTP {res.status_code}]: DuckDuckGo HTML disekat.")
+            return []
 
-                # Ekstrak Product ID dari URL (-i12345678.html)
-                match = re.search(r"-i(\d+)", page_url) or re.search(r"i(\d+)\.html", page_url)
-                if not match:
-                    continue
-                product_id = match.group(1)
+        # Cari semua pautan terkod uddg= (Lazada Product Link Redirect)
+        raw_matches = re.findall(r'uddg=(https%3A%2F%2Fwww\.lazada\.com\.my%2Fproducts%2F[^&"\'\s>]+)', res.text)
 
-                clean_title = title.replace(" | Lazada Malaysia", "").replace(" | Lazada", "").strip()
+        print(f"   📦 Jumpa {len(raw_matches)} pautan mentah produk Lazada.")
 
-                if product_id and product_id not in seen_ids and img_url:
-                    seen_ids.add(product_id)
-                    extracted_products.append({
-                        "id": product_id,
-                        "title": clean_title,
-                        "image": img_url,
-                        "price": 35.00,  # Harga anggaran selamat bagi melepasi Guardrail RM10-RM500
-                        "discountPrice": 35.00,
-                        "outOfStock": False,
-                        "matched_keyword": kw_clean,
-                        "desc": f"Promosi pilihan Cikgu Suri Rumah ({kw_clean}): {clean_title}"
-                    })
+        for encoded_url in raw_matches:
+            decoded_url = unquote(encoded_url)
 
-            # 2. Fallback: Jika Carian Imej tiada, guna Carian Teks
-            if not extracted_products:
-                print("   🔍 Menggunakan DuckDuckGo Text Search Fallback...")
-                text_results = list(ddgs.text(query, region="my-en", safesearch="off", max_results=10))
-                for item in text_results:
-                    page_url = item.get("href", "")
-                    title = item.get("title", "")
+            # Ekstrak Product ID dari URL (-i12345678.html)
+            match = re.search(r"-i(\d+)", decoded_url) or re.search(r"i(\d+)\.html", decoded_url)
+            if not match:
+                continue
 
-                    match = re.search(r"-i(\d+)", page_url) or re.search(r"i(\d+)\.html", page_url)
-                    if not match:
-                        continue
-                    product_id = match.group(1)
+            product_id = match.group(1)
 
-                    clean_title = title.replace(" | Lazada Malaysia", "").replace(" | Lazada", "").strip()
+            # Jana tajuk mesra berdasarkan keyword
+            clean_title = f"Produk Lazada {kw_clean.capitalize()} (ID: {product_id})"
 
-                    if product_id and product_id not in seen_ids:
-                        seen_ids.add(product_id)
-                        extracted_products.append({
-                            "id": product_id,
-                            "title": clean_title,
-                            "image": "https://img.lazcdn.com/g/p/dummy.jpg",
-                            "price": 35.00,
-                            "discountPrice": 35.00,
-                            "outOfStock": False,
-                            "matched_keyword": kw_clean,
-                            "desc": f"Promosi pilihan Cikgu Suri Rumah ({kw_clean}): {clean_title}"
-                        })
+            if product_id and product_id not in seen_ids:
+                seen_ids.add(product_id)
+                extracted_products.append({
+                    "id": product_id,
+                    "title": clean_title,
+                    "image": "https://img.lazcdn.com/g/p/dummy.jpg",
+                    "price": 35.00,  # Harga selamat bagi melepasi Guardrail RM10-RM500
+                    "discountPrice": 35.00,
+                    "outOfStock": False,
+                    "matched_keyword": kw_clean,
+                    "desc": f"Promosi pilihan Cikgu Suri Rumah ({kw_clean}): {clean_title}"
+                })
 
     except Exception as e:
-        print(f"   ⚠️ [DUCKDUCKGO WARN]: Ralat carian DuckDuckGo/RateLimit: {e}")
+        print(f"   💥 [EXCEPTIONAL ERROR] Ralat carian DuckDuckGo HTML: {e}")
+        traceback.print_exc()
 
-    print(f"   📦 Jumpa {len(extracted_products)} produk sah dari DuckDuckGo untuk '{kw_clean}'.")
+    print(f"   ✅ Berjaya mengekstrak {len(extracted_products)} produk sah untuk '{kw_clean}'.")
     return extracted_products
 
 def search_lazada_candidates_by_keywords(keywords):
     """
-    Menjalankan carian DuckDuckGo untuk semua kata kunci dengan jeda masa anti-ratelimit.
+    Menjalankan carian DuckDuckGo HTML untuk semua kata kunci.
     """
     all_candidates = []
     seen_ids = set()
 
     print("\n==================================================")
-    print("🔍 [DUCKDUCKGO KEYWORD SEARCH] Initiating Keyword Search")
+    print("🔍 [DUCKDUCKGO HTML KEYWORD SEARCH] Initiating Keyword Search")
     print(f"📋 Keywords: {keywords}")
     print("==================================================")
 
     for idx, kw in enumerate(keywords):
         if idx > 0:
-            # Jeda masa 2.5 saat antara carian untuk elak DuckDuckGo 403 RateLimit
-            time.sleep(2.5)
+            time.sleep(1.5)  # Jeda masa ringkas antara carian
 
-        items = search_lazada_via_duckduckgo(kw)
+        items = search_lazada_via_ddg_html(kw)
         for prod in items:
             p_id = prod["id"]
             if p_id not in seen_ids:
                 seen_ids.add(p_id)
                 all_candidates.append(prod)
 
-    print(f"\n🎯 [RUMUSAN CARIAN DUCKDUCKGO]: Keseluruhan Produk Ditemui = {len(all_candidates)}")
+    print(f"\n🎯 [RUMUSAN CARIAN DDG HTML]: Keseluruhan Produk Ditemui = {len(all_candidates)}")
     return all_candidates

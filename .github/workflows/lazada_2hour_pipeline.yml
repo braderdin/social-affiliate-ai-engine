@@ -26,10 +26,10 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir requests python-dotenv duckduckgo_search
+          pip install --no-cache-dir requests python-dotenv
           if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
-      - name: Execute DuckDuckGo Keyword Search Engine
+      - name: Execute DuckDuckGo HTML Search Engine
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: "."
