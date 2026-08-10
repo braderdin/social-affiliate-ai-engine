@@ -16,7 +16,7 @@ from src.facebook_bot import send_to_facebook_page
 from src.telegram_bot import send_photo_to_telegram
 
 from pipeline_v2.ai_cikgu_persona import generate_search_keywords
-from pipeline_v2.lazada_keyword_search import search_lazada_candidates
+from pipeline_v2.lazada_keyword_search import search_lazada_candidates_by_keywords
 
 load_dotenv('.env.local')
 
@@ -30,10 +30,10 @@ def sanitize(val):
 
 def run_pipeline():
     print("==================================================")
-    print("🚀 [PIPELINE V2] Executing Category & Keyword Search Engine")
+    print("🚀 [PIPELINE V2] Executing 100% Direct Fetch Search Engine")
     print("==================================================")
 
-    # 1. Baca Kunci Persekitaran
+    # 1. Baca Kunci Persekitaran (Zero Hardcoding)
     openrouter_url = sanitize(os.getenv("OPENROUTER_BASE_URL"))
     openrouter_model = sanitize(os.getenv("OPENROUTER_MODEL"))
     openrouter_key = sanitize(os.getenv("OPENROUTER_API_KEY"))
@@ -57,14 +57,14 @@ def run_pipeline():
     if not lazada_app_key or not lazada_app_secret or not lazada_token:
         raise ValueError("🔴 [KRITIKAL] Kunci API Lazada tidak ditemui di dalam Environment Secrets!")
 
-    # 2. AI Persona Jana Category & Keywords Pendek
-    cat_name, category_l1_ids, keywords = generate_search_keywords(openrouter_url, openrouter_model, openrouter_key)
+    # 2. AI Persona Jana 5 Keyword Pendek
+    cat_name, keywords = generate_search_keywords(openrouter_url, openrouter_model, openrouter_key)
 
-    # 3. Carian Produk Mengikut Kategori & Keyword
-    candidates = search_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_token, category_l1_ids, keywords, min_commission_rate=20.0)
+    # 3. Direct Fetch Search Keyword
+    candidates = search_lazada_candidates_by_keywords(keywords)
 
     if not candidates:
-        print("\n🔴 [PIPELINE STOPPED]: Carian kategori tidak memulangkan sebarang produk dari Lazada API.")
+        print("\n🔴 [PIPELINE STOPPED]: Direct Fetch Search tidak memulangkan sebarang produk. Sila semak log ralat di atas.")
         return
 
     selected_product = None
@@ -76,7 +76,7 @@ def run_pipeline():
         p_title = prod["title"]
         matched_kw = prod.get("matched_keyword", "")
 
-        # A. Guardrails (RM10-RM500, Status Stok, Blacklist)
+        # A. Guardrails (Harga RM10-RM500, Status Stok, Blacklist)
         is_ok, price, reason = evaluate_product(prod)
         if not is_ok:
             print(f"   ⏭️ [GUARDRAIL DITOLAK] ID {p_id} ('{matched_kw}'): {reason} (Harga: RM{price})")
@@ -107,14 +107,14 @@ def run_pipeline():
     p_title = selected_product["title"]
     p_desc = selected_product["desc"]
 
-    print(f"\n🟢 [PRODUK TERPILIH] ID: {p_id} | {p_title}")
+    print(f"\n🟢 [PRODUK TERPILIH ID: {p_id}] {p_title}")
 
-    # 4. Penjanaan Link Affiliate Rasmi
+    # 4. Penjanaan Link Affiliate Rasmi Akaun Anda
     affiliate_link = generate_tracking_link(lazada_app_key, lazada_app_secret, lazada_token, p_id)
     if not affiliate_link:
         raise Exception(f"❌ Gagal menjana link affiliate rasmi untuk produk ID {p_id}")
 
-    print(f"🔗 Link Affiliate Rasmi: {affiliate_link}")
+    print(f"🔗 Link Affiliate Rasmi Anda: {affiliate_link}")
 
     # 5. Post ke Facebook Page (Gambar + Komen Link)
     if fb_page_id and fb_page_token:
@@ -134,7 +134,7 @@ def run_pipeline():
             print("📤 Menghantar hantaran ke Telegram Channel...")
             tg_success, tg_res = send_photo_to_telegram(tg_token, tg_chat_id, tg_caption, selected_image, affiliate_link)
             if tg_success:
-                print("🟢 [TELEGRAM BERJAYA] Gambar & Mesej dihantar.")
+                print("🟢 [TELEGRAM BERJAYA] Mesej & Gambar dihantar.")
             else:
                 print(f"⚠️ [TELEGRAM WARN] {tg_res}")
 
@@ -143,7 +143,7 @@ def run_pipeline():
     mark_vector_posted(vector_url, vector_token, p_id, p_title)
 
     print("\n==================================================")
-    print("🟢 [SUCCESS] PIPELINE CATEGORY & KEYWORD SEARCH COMPLETED!")
+    print("🟢 [SUCCESS] PIPELINE DIRECT FETCH SEARCH COMPLETED!")
     print("==================================================")
 
 if __name__ == "__main__":
