@@ -4,48 +4,97 @@ import random
 import re
 import requests
 
-# Senarai Kategori Diperluas (Persona Cikgu Suri Rumah Muslimah)
+# Senarai Kategori Diperluas beserta ID categoryL1 Rasmi Lazada Open Platform
 EXPANDED_CATEGORIES = [
-    {"name": "barangan dapur", "desc": "periuk, air fryer, bekas, pisau, kuali, blender, rak dapur"},
-    {"name": "barangan rumah", "desc": "rak kasut, penyangkut, pelekat, langsir, sarung, penyusun"},
-    {"name": "barangan baby & ibu berpantang", "desc": "tungku, bengkung, mandian, bakul, botol, stokin"},
-    {"name": "barangan kosmetik & penjagaan diri", "desc": "skincare, pelembap, pembersih, lotion, gincu, serum"},
-    {"name": "mainan bayi dan mainan kanak2", "desc": "mainan, montessori, sensory, papan tulis, lego, puzzle"},
-    {"name": "aksesori diy rumah", "desc": "pelekat, gam, lampu, pemutar, span, pita"},
-    {"name": "peralatan sekolah & alat tulis anak-anak", "desc": "pencetak, pemadam, beg sekolah, pensel, pembaris"},
-    {"name": "kelengkapan solat & ibadah keluarga", "desc": "sejadah, telekung, rehal, alquran, tasbih, kopiah"},
-    {"name": "gajet & elektrik jimat tenaga", "desc": "vacuum, periuk nasi, penimbang, cerek, kipas mini"},
-    {"name": "aksesori pembersihan & kebersihan rumah", "desc": "mop, berus, sabun, pengelap, tuala, berus gigi"},
-    {"name": "pakaian muslimah & fesyen keluarga", "desc": "tudung, inner, stokin, baju kelawar, khimar"},
-    {"name": "organizer & storan serbaguna", "desc": "kotak, bakul, bekas, beg storan, penyusun"}
+    {
+        "name": "barangan dapur", 
+        "cat_ids": ["10000343", "10100539"], 
+        "desc": "periuk, air fryer, bekas, pisau, kuali, blender, rak dapur"
+    },
+    {
+        "name": "barangan rumah", 
+        "cat_ids": ["10100539", "275"], 
+        "desc": "rak kasut, penyangkut, pelekat, langsir, sarung, penyusun"
+    },
+    {
+        "name": "barangan baby & ibu berpantang", 
+        "cat_ids": ["3752"], 
+        "desc": "tungku, bengkung, mandian, bakul, botol, stokin"
+    },
+    {
+        "name": "barangan kosmetik & penjagaan diri", 
+        "cat_ids": ["1438"], 
+        "desc": "skincare, pelembap, pembersih, lotion, gincu, serum"
+    },
+    {
+        "name": "mainan bayi dan mainan kanak2", 
+        "cat_ids": ["10168"], 
+        "desc": "mainan, montessori, sensory, papan tulis, lego, puzzle"
+    },
+    {
+        "name": "aksesori diy rumah", 
+        "cat_ids": ["10100539", "275"], 
+        "desc": "pelekat, gam, lampu, pemutar, span, pita"
+    },
+    {
+        "name": "peralatan sekolah & alat tulis anak-anak", 
+        "cat_ids": ["10000344"], 
+        "desc": "pencetak, pemadam, beg sekolah, pensel, pembaris"
+    },
+    {
+        "name": "kelengkapan solat & ibadah keluarga", 
+        "cat_ids": ["1902", "42062401"], 
+        "desc": "sejadah, telekung, rehal, tasbih, kopiah, sejadah tebal"
+    },
+    {
+        "name": "gajet & elektrik jimat tenaga", 
+        "cat_ids": ["275"], 
+        "desc": "vacuum, periuk nasi, penimbang, cerek, kipas mini"
+    },
+    {
+        "name": "aksesori pembersihan & kebersihan rumah", 
+        "cat_ids": ["10100539"], 
+        "desc": "mop, berus, sabun, pengelap, tuala, berus gigi"
+    },
+    {
+        "name": "pakaian muslimah & fesyen keluarga", 
+        "cat_ids": ["1902", "42062401"], 
+        "desc": "tudung, inner, stokin, baju kelawar, khimar"
+    },
+    {
+        "name": "organizer & storan serbaguna", 
+        "cat_ids": ["10000343", "10100539"], 
+        "desc": "kotak, bakul, bekas, beg storan, penyusun"
+    }
 ]
 
 def generate_search_keywords(base_url, model, api_key):
     """
-    Memilih 1 kategori dan mengarahkan AI Persona 'Cikgu Suri Rumah' 
-    menjana 5 kata kunci carian PENDEK (1 hingga 2 PERKATAAN SAHAJA).
+    Memilih 1 kategori secara rawak, memulangkan categoryL1 ID Lazada,
+    dan menggunakan AI Persona untuk menjana 5 kata kunci carian pendek.
     """
     selected_cat = random.choice(EXPANDED_CATEGORIES)
     category_name = selected_cat["name"]
+    category_l1_ids = selected_cat["cat_ids"]
     category_desc = selected_cat["desc"]
 
+    fallback_kws = [k.strip() for k in category_desc.split(",")][:5]
+
     if not base_url or not model or not api_key:
-        print("⚠️ [AI PERSONA WARN] Kunci OpenRouter tidak lengkap. Menggunakan kata kunci asas pendek...")
-        fallback_kws = [k.strip() for k in category_desc.split(",")][:5]
-        return category_name, fallback_kws
+        print(f"🎯 [AI PERSONA] Kategori: '{category_name}' (L1: {category_l1_ids}) | Keywords Asas: {fallback_kws}")
+        return category_name, category_l1_ids, fallback_kws
 
     system_prompt = """
 Anda ialah 'Cikgu Suri Rumah'.
-Tugas anda: Jana BETUL-BETUL 5 kata kunci carian carian produk di Lazada.
+Tugas anda: Jana BETUL-BETUL 5 kata kunci carian pendek dalam Bahasa Melayu/Inggeris.
 
 ARAHAN SYARAT KETAT:
-1. Setiap kata kunci MESTI SANGAT PENDEK: 1 HINGGA 2 PERKATAAN SAHAJA (Contoh: "periuk", "sejadah", "mop", "air fryer", "telekung", "rak").
-2. DILARANG guna ayat panjang atau frasa berangkai (Contoh DILARANG: "air fryer digital mini jimat tenaga").
-3. WAJIB memulangkan hasil dalam format JSON ARRAY SAHAJA tanpa sebarang teks penjelasan:
+1. Setiap kata kunci MESTI 1 HINGGA 2 PERKATAAN SAHAJA (Contoh: "sejadah", "telekung", "mop", "periuk", "rak").
+2. WAJIB memulangkan hasil dalam format JSON ARRAY SAHAJA tanpa sebarang penjelasan:
 ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
 """
 
-    prompt_user = f"Kategori: {category_name}\nContoh Idea Pendek: {category_desc}\nJana 5 kata kunci carian Lazada pendek (1-2 perkataan sahaja):"
+    prompt_user = f"Kategori: {category_name}\nContoh Idea: {category_desc}\nJana 5 kata kunci pendek (1-2 perkataan):"
 
     payload = {
         "model": model,
@@ -72,15 +121,10 @@ ARAHAN SYARAT KETAT:
 
             keywords = json.loads(cleaned)
             if isinstance(keywords, list) and len(keywords) > 0:
-                # Bersihkan kata kunci supaya tidak lebih 2 perkataan
-                shortened_kws = []
-                for kw in keywords:
-                    words = str(kw).strip().split()
-                    shortened_kws.append(" ".join(words[:2]))
-                print(f"🎯 [AI PERSONA] Kategori: '{category_name}' | Keywords Pendek: {shortened_kws}")
-                return category_name, shortened_kws
+                shortened_kws = [" ".join(str(kw).strip().split()[:2]) for kw in keywords]
+                print(f"🎯 [AI PERSONA] Kategori: '{category_name}' (L1: {category_l1_ids}) | Keywords: {shortened_kws}")
+                return category_name, category_l1_ids, shortened_kws
     except Exception as e:
-        print(f"⚠️ [AI PERSONA WARN] Ralat OpenRouter AI: {e}")
+        print(f"⚠️ [AI PERSONA WARN] Ralat AI: {e}")
 
-    fallback_kws = [k.strip() for k in category_desc.split(",")][:5]
-    return category_name, fallback_kws
+    return category_name, category_l1_ids, fallback_kws

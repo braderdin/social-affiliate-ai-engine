@@ -30,7 +30,7 @@ def sanitize(val):
 
 def run_pipeline():
     print("==================================================")
-    print("🚀 [PIPELINE V2] Executing Keyword Search Pipeline Only")
+    print("🚀 [PIPELINE V2] Executing Category & Keyword Search Engine")
     print("==================================================")
 
     # 1. Baca Kunci Persekitaran
@@ -57,14 +57,14 @@ def run_pipeline():
     if not lazada_app_key or not lazada_app_secret or not lazada_token:
         raise ValueError("🔴 [KRITIKAL] Kunci API Lazada tidak ditemui di dalam Environment Secrets!")
 
-    # 2. AI Persona Jana 5 Keyword Pendek
-    cat_name, keywords = generate_search_keywords(openrouter_url, openrouter_model, openrouter_key)
+    # 2. AI Persona Jana Category & Keywords Pendek
+    cat_name, category_l1_ids, keywords = generate_search_keywords(openrouter_url, openrouter_model, openrouter_key)
 
-    # 3. Carian Produk Melalui Keyword
-    candidates = search_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_token, keywords, min_commission_rate=20.0)
+    # 3. Carian Produk Mengikut Kategori & Keyword
+    candidates = search_lazada_candidates(lazada_app_key, lazada_app_secret, lazada_token, category_l1_ids, keywords, min_commission_rate=20.0)
 
     if not candidates:
-        print("\n🔴 [PIPELINE STOPPED]: Carian kata kunci tidak menjumpai sebarang produk dari Lazada API. Sila semak log ralat API di atas.")
+        print("\n🔴 [PIPELINE STOPPED]: Carian kategori tidak memulangkan sebarang produk dari Lazada API.")
         return
 
     selected_product = None
@@ -100,7 +100,7 @@ def run_pipeline():
         break
 
     if not selected_product:
-        print("\n🔴 [PIPELINE WARN]: Semua calon produk carian keyword ditolak oleh Guardrails/Redis/Vector DB.")
+        print("\n🔴 [PIPELINE WARN]: Semua calon produk ditolak oleh Guardrails/Redis/Vector DB.")
         return
 
     p_id = selected_product["id"]
@@ -143,7 +143,7 @@ def run_pipeline():
     mark_vector_posted(vector_url, vector_token, p_id, p_title)
 
     print("\n==================================================")
-    print("🟢 [SUCCESS] PIPELINE KEYWORD SEARCH COMPLETED!")
+    print("🟢 [SUCCESS] PIPELINE CATEGORY & KEYWORD SEARCH COMPLETED!")
     print("==================================================")
 
 if __name__ == "__main__":
