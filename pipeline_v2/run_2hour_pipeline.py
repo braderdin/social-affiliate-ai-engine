@@ -98,15 +98,16 @@ def run_pipeline():
             continue
 
         # D. Penjanaan Link Affiliate Rasmi via Official Lazada API
+        print(f"   📡 Mencuba jana link affiliate untuk Product ID: {p_id}...")
         link = generate_tracking_link(lazada_app_key, lazada_app_secret, lazada_token, p_id)
         if not link:
-            print(f"   ⚠️ [LINK WARN] Lazada API memulangkan link kosong untuk ID {p_id}. Mencuba produk seterusnya...")
+            print(f"   ⚠️ [LINK WARN] Lazada API memulangkan link kosong untuk ID {p_id}. Mencuba calon produk seterusnya...")
             continue
 
         selected_product = prod
         selected_image = img_url
         affiliate_link = link
-        break
+        break  # Berjaya temui produk & link affiliate sah!
 
     if not selected_product or not affiliate_link:
         print("\n🔴 [PIPELINE WARN]: Tiada calon produk yang mempunyai link affiliate sah selepas tapisan Guardrails/Redis/Vector DB.")
