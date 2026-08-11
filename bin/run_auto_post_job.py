@@ -15,7 +15,6 @@ from playwright_engine.supabase_db import fetch_unused_links, mark_link_as_used,
 from src.redis_db import is_product_posted, mark_product_posted
 from src.vector_db import is_similar_product_posted, mark_vector_posted
 from src.ai_persona import generate_caption
-from src.facebook_ai_persona import generate_facebook_caption
 from src.telegram_bot import send_photo_to_telegram
 from src.facebook_bot import send_to_facebook_page
 
@@ -149,26 +148,31 @@ def run_auto_posting_job():
     print(f"   Gambar: {img_url}")
     print(f"   Link  : {aff_link}")
 
+    # 3. JANA KAPSYEN PENCERITAAN AI PERSONA (DARI src/ai_persona.py UNTUK KEDUA-DUA PLATFORM)
+    print("\n✍️ [STEP 3] Menjana kapsyen penceritaan pancingan AI Persona...")
+    ai_ok, shared_caption = generate_caption(
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+        product_title=title,
+        product_desc=title
+    )
+
+    if not ai_ok or not shared_caption:
+        shared_caption = f"Aduh, pening kepala bila tengok masalah ni! Nasib baik terjumpa {title}. Memang berbaloi dan jimat sangat."
+
+    print(f"✅ [KAPSYEN AI BERJAYA DIJANA]:\n{shared_caption}\n")
+
     tg_success = False
     fb_success = False
 
-    # PROSES TELEGRAM
+    # 4. PROSES TELEGRAM (MENGGUNAKAN shared_caption)
     if tg_token and tg_chat_id:
-        print("\n✈️ [STEP 3] Menjana kapsyen & pos ke Telegram Channel...")
-        tg_ok, tg_caption = generate_caption(
-            base_url=base_url,
-            model=model,
-            api_key=api_key,
-            product_title=title,
-            product_desc=title
-        )
-        if not tg_ok or not tg_caption:
-            tg_caption = f"Haa harini Cikgu nak kongsi barang best: {title}! Memang berbaloi dan jimat sangat."
-
+        print("✈️ [STEP 4] Pos ke Telegram Channel...")
         sent_tg_ok, res_tg = send_photo_to_telegram(
             token=tg_token,
             chat_id=tg_chat_id,
-            caption=tg_caption,
+            caption=shared_caption,
             image_url=img_url,
             affiliate_link=aff_link
         )
@@ -178,23 +182,13 @@ def run_auto_posting_job():
         else:
             print(f"  ❌ Gagal pos ke Telegram: {res_tg}")
 
-    # PROSES FACEBOOK
+    # 5. PROSES FACEBOOK PAGE (MENGGUNAKAN shared_caption YANG SAMA)
     if fb_page_id and fb_page_token:
-        print("\n📘 [STEP 4] Menjana kapsyen AI & pos ke Facebook Page...")
-        fb_ai_ok, fb_caption, fb_comment = generate_facebook_caption(
-            base_url=base_url,
-            model=model,
-            api_key=api_key,
-            product_title=title,
-            product_desc=title
-        )
-        if not fb_ai_ok or not fb_caption:
-            fb_caption = f"Haa harini Cikgu nak bagi barang best untuk rumah: {title}! Geram betul Cikgu tengok benda ni."
-
+        print("\n📘 [STEP 5] Pos ke Facebook Page...")
         sent_fb_ok, res_fb = send_to_facebook_page(
             page_id=fb_page_id,
             page_token=fb_page_token,
-            caption=fb_caption,
+            caption=shared_caption,
             image_url=img_url,
             affiliate_link=aff_link
         )
@@ -204,9 +198,9 @@ def run_auto_posting_job():
         else:
             print(f"  ❌ Gagal pos ke Facebook Page: {res_fb}")
 
-    # REKOD STATUS
+    # 6. REKOD STATUS KE PANGKALAN DATA
     if tg_success or fb_success:
-        print("\n💾 [STEP 5] Merekodkan status pemposan ke pangkalan data...")
+        print("\n💾 [STEP 6] Merekodkan status pemposan ke pangkalan data...")
 
         if mark_product_posted(redis_url, redis_token, p_id, title):
             print("  ✅ Rekod direkodkan di Upstash Redis.")

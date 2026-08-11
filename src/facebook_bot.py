@@ -1,16 +1,16 @@
 import requests
 
-def send_to_facebook_page(page_id, page_token, caption, image_url, affiliate_link):
+def send_to_facebook_page(page_id, page_token, caption, image_url, affiliate_link=""):
     """
-    Menghantar gambar + caption ke Facebook Page via Binary Upload, kemudian memasukkan
-    pautan affiliate di ruangan komen pertama secara automatik.
+    Menghantar gambar + caption ke Facebook Page.
+    JIKA affiliate_link KOSONG (Lifestyle Mode), TIDAK AKAN MASUK KE KOMEN SAMA SEKALI.
     """
     if not page_id or not page_token:
         return False, "Kunci FACEBOOK_PAGE_ID atau FB_PAGE_ACCESS_TOKEN tidak dijumpai."
 
     graph_base_url = "https://graph.facebook.com/v19.0"
 
-    # 1. Muat turun gambar ke memori (Binary Upload)
+    # Muat turun gambar ke memori
     img_bytes = None
     if image_url:
         try:
@@ -19,14 +19,13 @@ def send_to_facebook_page(page_id, page_token, caption, image_url, affiliate_lin
             if res.status_code == 200 and len(res.content) > 100:
                 img_bytes = res.content
         except Exception as e:
-            print(f"⚠️ [FB MODULE WARN] Gagal muat turun gambar binary: {e}")
+            print(f"⚠️ [FB WARN] Gagal muat turun gambar binary: {e}")
 
     photo_url = f"{graph_base_url}/{page_id}/photos"
     
     try:
         if img_bytes:
-            # Muat naik gambar secara Binary (Bypass sekatan CDN Lazada pada Facebook)
-            files = {"source": ("product.jpg", img_bytes, "image/jpeg")}
+            files = {"source": ("lifestyle.jpg", img_bytes, "image/jpeg")}
             photo_payload = {
                 "caption": caption,
                 "published": "true",
@@ -34,7 +33,6 @@ def send_to_facebook_page(page_id, page_token, caption, image_url, affiliate_lin
             }
             res_photo = requests.post(photo_url, data=photo_payload, files=files, timeout=30)
         else:
-            # Fallback ke URL jika binary gagal
             photo_payload = {
                 "url": image_url,
                 "caption": caption,
@@ -51,25 +49,25 @@ def send_to_facebook_page(page_id, page_token, caption, image_url, affiliate_lin
 
         target_post_id = photo_json.get("post_id") or photo_json.get("id")
 
-        # 2. Masukkan Komen Pertama (Pautan Affiliate)
-        comment_url = f"{graph_base_url}/{target_post_id}/comments"
-        comment_text = f"🛒 Dapatkan di Lazada sekarang👇\n{affiliate_link}"
-        comment_payload = {
-            "message": comment_text,
-            "access_token": page_token
-        }
-
-        res_comment = requests.post(comment_url, data=comment_payload, timeout=20)
-        comment_json = res_comment.json()
-
-        if res_comment.status_code == 200 and "id" in comment_json:
-            return True, {
-                "post_id": target_post_id,
-                "comment_id": comment_json.get("id")
+        # MASUK KOMEN HANYA JIKA ADA PAUTAN AFFILIATE
+        clean_link = str(affiliate_link or "").strip()
+        if clean_link:
+            comment_url = f"{graph_base_url}/{target_post_id}/comments"
+            comment_text = f"🛒 Dapatkan di Lazada sekarang👇\n{clean_link}"
+            comment_payload = {
+                "message": comment_text,
+                "access_token": page_token
             }
+            res_comment = requests.post(comment_url, data=comment_payload, timeout=20)
+            comment_json = res_comment.json()
+
+            if res_comment.status_code == 200 and "id" in comment_json:
+                return True, {"post_id": target_post_id, "comment_id": comment_json.get("id")}
+            else:
+                return False, f"Gambar dipos, tetapi gagal komen: {res_comment.text}"
         else:
-            err_c = comment_json.get("error", {})
-            return False, f"Gambar berjaya dipos ({target_post_id}), tetapi gagal hantar komen: {err_c.get('message', res_comment.text)}"
+            # REAL HUMAN MODE: Pos Gambar & Kapsyen Sahaja (Sifar Komen)
+            return True, {"post_id": target_post_id, "comment_id": None}
 
     except Exception as e:
         return False, f"Ralat Rangkaian Facebook API: {str(e)}"
