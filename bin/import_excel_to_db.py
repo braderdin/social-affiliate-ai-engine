@@ -4,37 +4,25 @@ import glob
 import pandas as pd
 from dotenv import load_dotenv
 
-# Muat turun tetapan dari .env.local
 load_dotenv(dotenv_path=".env.local")
-
-# Tambah laluan akar projek
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from playwright_engine.supabase_db import save_links_to_supabase
 from playwright_engine.link_pool_manager import add_links_to_pool
-from src.redis_db import mark_product_posted
-
-REDIS_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").strip()
-REDIS_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
 
 def import_excel_file(file_path=None):
     print("\n" + "="*70)
     print("📊 [START] PENGIMPORT PAUTAN AFFILIATE DARI FAIL EXCEL LAZADA")
     print("="*70)
 
-    # Search default paths if no file is provided
     if not file_path:
-        search_paths = [
-            "link_affiliate_xlsx/*.xlsx",
-            "*.xlsx",
-            "data/*.xlsx"
-        ]
+        search_paths = ["link_affiliate_xlsx/*.xlsx", "*.xlsx", "data/*.xlsx"]
         excel_files = []
         for path in search_paths:
             excel_files.extend(glob.glob(path))
 
         if not excel_files:
-            print("❌ Tiada fail Excel (.xlsx) dijumpai. Sila pastikan fail berada dalam folder 'link_affiliate_xlsx/'.")
+            print("❌ Tiada fail Excel (.xlsx) dijumpai di folder 'link_affiliate_xlsx/'.")
             return
         file_path = excel_files[0]
 
@@ -88,28 +76,18 @@ def import_excel_file(file_path=None):
         print("⚠️ Tiada pautan sah ditemui di dalam fail Excel.")
         return
 
-    # 1. Simpan ke Upstash Redis
-    redis_count = 0
-    for item in items_to_save:
-        p_id = item["product_id"]
-        title = item["title"]
-        if REDIS_URL and REDIS_TOKEN:
-            mark_product_posted(REDIS_URL, REDIS_TOKEN, p_id, title)
-            redis_count += 1
-    print(f"💾 [REDIS] {redis_count} rekod berjaya di-hash dan disimpan ke Upstash Redis.")
-
-    # 2. Simpan ke Supabase Cloud
+    # 1. Simpan ke Supabase Cloud
     supa_ok, supa_count, supa_msg = save_links_to_supabase(items_to_save)
     if supa_ok:
         print(f"☁️ [SUPABASE SUCCESS] {supa_msg}")
     else:
         print(f"❌ [SUPABASE ERROR] {supa_msg}")
 
-    # 3. Simpan ke Local JSON Pool (data/affiliate_link_pool.json)
+    # 2. Simpan ke Local JSON Pool (data/affiliate_link_pool.json)
     added_count, total_pool = add_links_to_pool(items_to_save)
     print(f"📦 [LOCAL POOL] +{added_count} pautan baharu ditambah. Jumlah keseluruhan dalam Pool: {total_pool}")
 
-    print("\n🎉 SELESAI! Semua pautan dari fail Excel telah dimasukkan ke pangkalan data.")
+    print("\n🎉 SELESAI! Semua pautan dari fail Excel telah dimasukkan ke pangkalan data (Tanpa mengusik Redis).")
 
 if __name__ == "__main__":
     target_file = sys.argv[1] if len(sys.argv) > 1 else None
