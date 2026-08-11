@@ -2,7 +2,7 @@ import requests
 
 def send_to_facebook_page(page_id, page_token, caption, image_url, affiliate_link):
     """
-    Menghantar gambar + caption ke Facebook Page, kemudian memasukkan
+    Menghantar gambar + caption ke Facebook Page via Binary Upload, kemudian memasukkan
     pautan affiliate di ruangan komen pertama secara automatik.
     """
     if not page_id or not page_token:
@@ -10,17 +10,39 @@ def send_to_facebook_page(page_id, page_token, caption, image_url, affiliate_lin
 
     graph_base_url = "https://graph.facebook.com/v19.0"
 
-    # 1. Hantar Gambar + Caption Ke Facebook Page
-    photo_url = f"{graph_base_url}/{page_id}/photos"
-    photo_payload = {
-        "url": image_url,
-        "caption": caption,
-        "published": "true",
-        "access_token": page_token
-    }
+    # 1. Muat turun gambar ke memori (Binary Upload)
+    img_bytes = None
+    if image_url:
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            res = requests.get(image_url, headers=headers, timeout=15)
+            if res.status_code == 200 and len(res.content) > 100:
+                img_bytes = res.content
+        except Exception as e:
+            print(f"⚠️ [FB MODULE WARN] Gagal muat turun gambar binary: {e}")
 
+    photo_url = f"{graph_base_url}/{page_id}/photos"
+    
     try:
-        res_photo = requests.post(photo_url, data=photo_payload, timeout=25)
+        if img_bytes:
+            # Muat naik gambar secara Binary (Bypass sekatan CDN Lazada pada Facebook)
+            files = {"source": ("product.jpg", img_bytes, "image/jpeg")}
+            photo_payload = {
+                "caption": caption,
+                "published": "true",
+                "access_token": page_token
+            }
+            res_photo = requests.post(photo_url, data=photo_payload, files=files, timeout=30)
+        else:
+            # Fallback ke URL jika binary gagal
+            photo_payload = {
+                "url": image_url,
+                "caption": caption,
+                "published": "true",
+                "access_token": page_token
+            }
+            res_photo = requests.post(photo_url, data=photo_payload, timeout=25)
+
         photo_json = res_photo.json()
 
         if res_photo.status_code != 200 or ("id" not in photo_json and "post_id" not in photo_json):
