@@ -27,7 +27,8 @@ def save_links_to_supabase(link_items):
     if not link_items:
         return True, 0, "Tiada pautan untuk disimpan."
 
-    endpoint = f"{supabase_url}/rest/v1/affiliate_links"
+    # DITAMBAH: ?on_conflict=product_id untuk membolehkan UPSERT automatik tanpa ralat 409
+    endpoint = f"{supabase_url}/rest/v1/affiliate_links?on_conflict=product_id"
     headers = {
         "apikey": api_key,
         "Authorization": f"Bearer {api_key}",
