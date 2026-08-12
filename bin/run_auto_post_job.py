@@ -83,7 +83,7 @@ def run_auto_posting_job():
     )
 
     print("\n📦 [STEP 1] Membaca pautan dari Supabase Cloud...")
-    ok, candidate_list, err_msg = fetch_unused_links(limit=50)
+    ok, candidate_list, err_msg = fetch_unused_links(limit=100)
 
     if not ok or not candidate_list:
         print("⚠️ Tiada pautan status_used=false. Membaca senarai pautan keseluruhan dari Supabase...")
