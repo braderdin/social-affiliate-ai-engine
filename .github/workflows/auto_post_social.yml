@@ -2,8 +2,8 @@ name: Auto Post Social Media (Telegram & Facebook)
 
 on:
   schedule:
-    # Trigger pada 6am, 8am, 10am, 11am, 12pm, 2pm, 4pm, 5pm, 6pm, 8pm, 10pm & 12am (MYT)
-    - cron: '0 0,2,3,4,6,8,9,10,12,14,16,22 * * *'
+    # Trigger pada 8am, 12pm, 4pm & 8pm (MYT / UTC+8)
+    - cron: '0 0,4,8,12 * * *'
   workflow_dispatch:
     # Pilihan larian manual dari tab Actions di GitHub
 
