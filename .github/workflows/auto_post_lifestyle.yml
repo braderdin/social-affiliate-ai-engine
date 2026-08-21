@@ -2,13 +2,10 @@ name: Auto Post Lifestyle Story (Cikgu Suri Rumah)
 
 on:
   schedule:
-    # Berjalan 3 kali sehari (Waktu Malaysia / MYT = UTC +8):
-    # 1. 8:30 AM MYT (00:30 UTC) - Cerita Pagi / Sarapan
-    # 2. 1:00 PM MYT (05:00 UTC) - Cerita Tengahari / Makan Tengahari
-    # 3. 5:30 PM MYT (09:30 UTC) - Cerita Petang / Santai
-    - cron: '30 0 * * *'
-    - cron: '0 5 * * *'
-    - cron: '30 9 * * *'
+# Berjalan 2 kali sehari (Waktu Malaysia / MYT = UTC +8):
+    # 1. 8:15 AM MYT (00:30 UTC) - Slot Pagi
+    # 2. 5:15 PM MYT (09:30 UTC) - Slot Petang
+    - cron: '15 0,9 * * *'
   workflow_dispatch:
     # Pilihan larian manual dari tab Actions di GitHub
 
